@@ -11,30 +11,86 @@ process = None
 logs = []
 latest_stats = {}
 
-stats_pattern = re.compile(
-    r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+).*rst=(\d+)"
-)
+QUOTA_PER_ACCOUNT = 20000
+
 
 # -------------------------
-# PROCESS HANDLING
+# PARSING
+# -------------------------
+
+stats_pattern = re.compile(
+    r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)"
+)
+
+
+def parse_accounts(line):
+    if "accounts=[" not in line:
+        return None
+
+    start = line.find("accounts=[") + len("accounts=[")
+    end = line.find("]", start)
+    raw = line[start:end]
+
+    accounts = []
+    for part in raw.split("|"):
+        part = part.strip()
+        if "today=" in part and "script=" in part:
+            accounts.append(part)
+
+    return accounts
+
+
+# -------------------------
+# READER
 # -------------------------
 
 def reader():
     global latest_stats, logs, process
 
+    accounts = []
+
     for line in process.stdout:
         line = line.strip()
         logs.append(line)
 
+        # basic stats
         m = stats_pattern.search(line)
         if m:
-            latest_stats = {
-                "active": m.group(1),
-                "sessions": f"{m.group(2)}/{m.group(3)}",
-                "upload": m.group(4),
-                "download": m.group(5),
-                "rst": m.group(6),
-            }
+            latest_stats["active"] = int(m.group(1))
+            latest_stats["sessions"] = f"{m.group(2)}/{m.group(3)}"
+            latest_stats["upload"] = m.group(4)
+            latest_stats["download"] = m.group(5)
+
+        # accounts + quota calc
+        acc = parse_accounts(line)
+        if acc:
+            accounts = acc
+            latest_stats["accounts"] = len(accounts)
+
+            today_total = 0
+            session_total = 0
+
+            for a in accounts:
+                try:
+                    today_total += int(a.split("today=")[1].split()[0])
+                except:
+                    pass
+
+                try:
+                    session_total += int(a.split("script=")[1].split()[0])
+                except:
+                    pass
+
+            total_quota = len(accounts) * QUOTA_PER_ACCOUNT
+
+            latest_stats["today_used"] = today_total
+            latest_stats["session_used"] = session_total
+            latest_stats["quota_total"] = total_quota
+
+
+# -------------------------
+# CONTROL
+# -------------------------
 
 @app.get("/start")
 def start():
@@ -49,12 +105,13 @@ def start():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            cwd=base_dir   # 👈 THIS is the important fix
+            cwd=base_dir
         )
 
         threading.Thread(target=reader, daemon=True).start()
 
     return {"status": "started"}
+
 
 @app.get("/stop")
 def stop():
@@ -63,12 +120,14 @@ def stop():
         process.terminate()
     return {"status": "stopped"}
 
+
 @app.get("/status")
 def status():
     return {
         "running": process and process.poll() is None,
         "stats": latest_stats
     }
+
 
 @app.get("/logs")
 def get_logs():
@@ -83,77 +142,80 @@ HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Goosean</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<title>Goosean</title>
+<script src="https://cdn.tailwindcss.com"></script>
 
-    <style>
-        body {
-            background: #0b0f19;
-        }
-        .glass {
-            background: rgba(255,255,255,0.05);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-    </style>
+<style>
+body { background:#0b0f19; }
+.glass {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+</style>
 </head>
 
 <body class="text-white font-sans">
 
 <div class="max-w-6xl mx-auto p-6">
 
-    <!-- HEADER -->
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold">🦢 Goosean</h1>
+<!-- HEADER -->
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold">🦢 Goosean</h1>
+    <div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-sm">Loading...</div>
+</div>
 
-        <div id="status" class="px-4 py-1 rounded-full bg-gray-800 text-sm">
-            Loading...
-        </div>
+<!-- BUTTONS -->
+<div class="flex gap-3 mb-6">
+    <button onclick="start()" class="bg-green-600 px-4 py-2 rounded-xl">Start</button>
+    <button onclick="stop()" class="bg-red-600 px-4 py-2 rounded-xl">Stop</button>
+</div>
+
+<!-- STATS -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+
+    <div class="glass p-4 rounded-xl">
+        <div class="text-gray-400 text-sm">Active</div>
+        <div id="active" class="text-xl">-</div>
     </div>
 
-    <!-- BUTTONS -->
-    <div class="flex gap-3 mb-6">
-        <button onclick="start()"
-            class="bg-green-600 px-4 py-2 rounded-xl hover:bg-green-700">
-            Start
-        </button>
-
-        <button onclick="stop()"
-            class="bg-red-600 px-4 py-2 rounded-xl hover:bg-red-700">
-            Stop
-        </button>
+    <div class="glass p-4 rounded-xl">
+        <div class="text-gray-400 text-sm">Sessions</div>
+        <div id="sessions" class="text-xl">-</div>
     </div>
 
-    <!-- STATS -->
-    <div class="grid grid-cols-4 gap-4 mb-6">
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-gray-400 text-sm">Active</div>
-            <div id="active" class="text-xl">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-gray-400 text-sm">Sessions</div>
-            <div id="sessions" class="text-xl">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-gray-400 text-sm">Upload</div>
-            <div id="upload" class="text-xl">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-gray-400 text-sm">RST</div>
-            <div id="rst" class="text-xl">-</div>
-        </div>
-
+    <div class="glass p-4 rounded-xl">
+        <div class="text-gray-400 text-sm">Download</div>
+        <div id="download" class="text-xl">-</div>
     </div>
 
-    <!-- LOGS -->
-    <div class="glass p-4 rounded-xl h-[420px] overflow-y-scroll font-mono text-xs">
-        <div id="logs"></div>
+    <div class="glass p-4 rounded-xl">
+        <div class="text-gray-400 text-sm">Upload</div>
+        <div id="upload" class="text-xl">-</div>
     </div>
+
+</div>
+
+<!-- QUOTA -->
+<div class="grid grid-cols-2 gap-4 mb-6">
+
+    <div class="glass p-4 rounded-xl">
+        <div class="text-gray-400 text-sm">Today's Quota</div>
+        <div id="today" class="text-xl">-</div>
+    </div>
+
+    <div class="glass p-4 rounded-xl">
+        <div class="text-gray-400 text-sm">Session Quota</div>
+        <div id="session" class="text-xl">-</div>
+    </div>
+
+</div>
+
+<!-- LOGS -->
+<div class="glass p-4 rounded-xl h-[420px] overflow-y-scroll font-mono text-xs">
+    <div id="logs"></div>
+</div>
 
 </div>
 
@@ -167,19 +229,32 @@ async function update() {
 
     if (s.stats) {
         document.getElementById("active").innerText = s.stats.active ?? "-";
-        document.getElementById("sessions").innerText = s.stats.sessions ?? "-";
+
+        document.getElementById("sessions").innerText =
+            s.stats.sessions ?? "-";
+
+        document.getElementById("download").innerText = s.stats.download ?? "-";
         document.getElementById("upload").innerText = s.stats.upload ?? "-";
-        document.getElementById("rst").innerText = s.stats.rst ?? "-";
+
+        const total = s.stats.quota_total ?? 0;
+
+        const today = s.stats.today_used ?? 0;
+        const session = s.stats.session_used ?? 0;
+
+        document.getElementById("today").innerText =
+            `${today} / ${total}`;
+
+        document.getElementById("session").innerText =
+            `${session} / ${total}`;
     }
 
     const l = await fetch('/logs').then(r => r.json());
-
     document.getElementById("logs").innerHTML =
         l.logs.map(x => `<div>${x}</div>`).join("");
 }
 
-function start() { fetch('/start'); }
-function stop() { fetch('/stop'); }
+function start(){ fetch('/start'); }
+function stop(){ fetch('/stop'); }
 
 setInterval(update, 1000);
 update();
@@ -189,6 +264,7 @@ update();
 </body>
 </html>
 """
+
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
