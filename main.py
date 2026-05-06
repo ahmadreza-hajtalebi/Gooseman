@@ -139,6 +139,7 @@ HTML_PAGE = """
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gooseman</title>
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -157,47 +158,80 @@ body { background:#0b0f19 }
 
 <body class="text-white font-sans">
 
-<div class="max-w-6xl mx-auto p-6">
+<div class="max-w-6xl mx-auto p-3 sm:p-6">
 
-<div class="flex justify-between items-center mb-6">
-<h1 class="text-2xl font-bold">🦢 Gooseman</h1>
-<div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-sm">Loading...</div>
+<div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
+<h1 class="text-xl sm:text-2xl font-bold">🦢 Gooseman</h1>
+
+<div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-xs sm:text-sm w-fit">
+Loading...
+</div>
 </div>
 
 <button id="toggleBtn"
 onclick="toggle()"
-class="toggle-btn w-full mb-6 py-3 rounded-xl font-semibold text-lg bg-green-600">
+class="toggle-btn w-full sm:w-full mb-5 py-3 rounded-xl font-semibold text-base sm:text-lg bg-green-600">
 Start Goose
 </button>
 
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Active</div><div id="active">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Sessions</div><div id="sessions">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Download</div><div id="download">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Upload</div><div id="upload">-</div></div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs sm:text-sm">Active</div>
+<div id="active" class="text-lg sm:text-xl">-</div>
 </div>
 
-<div class="grid grid-cols-2 gap-4 mb-6">
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Today's Quota</div><div id="today">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Session Quota</div><div id="session">-</div></div>
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs sm:text-sm">Sessions</div>
+<div id="sessions" class="text-lg sm:text-xl">-</div>
 </div>
 
-<div class="glass p-4 rounded-xl mb-6">
-<h2 class="text-lg font-semibold mb-4">⚙️ SOCKS Config</h2>
-
-<div class="grid grid-cols-2 gap-4">
-<input id="socks_host" class="p-2 bg-gray-900 rounded">
-<input id="socks_port" class="p-2 bg-gray-900 rounded">
-<input id="socks_user" class="p-2 bg-gray-900 rounded">
-<input id="socks_pass" class="p-2 bg-gray-900 rounded" type="password">
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs sm:text-sm">Download</div>
+<div id="download" class="text-lg sm:text-xl">-</div>
 </div>
 
-<button onclick="saveConfig()" class="mt-4 bg-blue-600 px-4 py-2 rounded-xl">
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs sm:text-sm">Upload</div>
+<div id="upload" class="text-lg sm:text-xl">-</div>
+</div>
+
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-5">
+
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs sm:text-sm">Today's Quota</div>
+<div id="today" class="text-lg sm:text-xl">-</div>
+</div>
+
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs sm:text-sm">Session Quota</div>
+<div id="session" class="text-lg sm:text-xl">-</div>
+</div>
+
+</div>
+
+<div class="glass p-3 sm:p-4 rounded-xl mb-5">
+
+<h2 class="text-base sm:text-lg font-semibold mb-3">⚙️ SOCKS Config</h2>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+<input id="socks_host" class="p-2 bg-gray-900 rounded text-sm">
+<input id="socks_port" class="p-2 bg-gray-900 rounded text-sm">
+<input id="socks_user" class="p-2 bg-gray-900 rounded text-sm">
+<input id="socks_pass" class="p-2 bg-gray-900 rounded text-sm" type="password">
+
+</div>
+
+<button onclick="saveConfig()" class="mt-4 w-full bg-blue-600 px-4 py-2 rounded-xl text-sm sm:text-base">
 Save
 </button>
+
 </div>
 
-<div class="glass p-4 rounded-xl h-[420px] overflow-y-scroll font-mono text-xs">
+<div class="glass p-3 sm:p-4 rounded-xl h-[50vh] sm:h-[420px] overflow-y-scroll font-mono text-[10px] sm:text-xs">
 <div id="logs"></div>
 </div>
 
@@ -232,7 +266,6 @@ b.classList.add("bg-green-600")
 async function update(){
 const s = await fetch('/status').then(r=>r.json())
 running = s.running
-
 applyState()
 
 document.getElementById("status").innerText =
