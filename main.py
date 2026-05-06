@@ -51,21 +51,37 @@ def to_kb(val):
 def parse_accounts(line):
     if "accounts=[" not in line:
         return None
+
     start = line.find("accounts=[") + 10
     end = line.find("]", start)
     raw = line[start:end]
 
     accounts = []
+
     for part in raw.split("|"):
         part = part.strip()
-        if "today=" in part:
-            try:
-                accounts.append({
-                    "name": part.split("@")[-1].split()[0],
-                    "today": int(part.split("today=")[1].split()[0])
-                })
-            except:
-                pass
+
+        try:
+            name = part.split("@")[-1].split()[0]
+
+            today = 0
+            script = 0
+
+            if "today=" in part:
+                today = int(part.split("today=")[1].split()[0])
+
+            if "script=" in part:
+                script = int(part.split("script=")[1].split()[0])
+
+            accounts.append({
+                "name": name,
+                "today": today,
+                "script": script
+            })
+
+        except:
+            continue
+
     return accounts
 
 def reader():
