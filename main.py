@@ -41,7 +41,7 @@ def start():
 
     if not process or process.poll() is not None:
         process = subprocess.Popen(
-            ["./gooserelay-client", "-config", "config.json"],
+            ["./goose-client", "-config", "config.json"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True
