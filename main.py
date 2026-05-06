@@ -284,131 +284,137 @@ Save
 
 <script>
 
-let running=false
 let chart
+let isTransitioning = false
 
 const ACCOUNT_QUOTA = 20000
 
-let data={
-labels:[],
-upload:[],
-download:[],
-session:[],
+let data = {
+labels: [],
+upload: [],
+download: [],
+session: []
 }
 
-function init(){
-chart=new Chart(document.getElementById("usageChart"),{
-type:"line",
-data:{
-labels:data.labels,
-datasets:[
-{label:"Upload KB",borderColor:"#22c55e",data:data.upload,tension:0.3},
-{label:"Download KB",borderColor:"#3b82f6",data:data.download,tension:0.3},
-{label:"Session Quota",borderColor:"#f59e0b",data:data.session,tension:0.3}
+function getUiRunning() {
+const txt = document.getElementById("status").innerText || ""
+return txt.includes("Running")
+}
+
+function setButtonState() {
+const b = document.getElementById("toggleBtn")
+
+const uiRunning = getUiRunning()
+
+const locked = isTransitioning
+
+if (locked) {
+b.disabled = true
+b.classList.add("opacity-50", "cursor-not-allowed")
+return
+}
+
+b.disabled = false
+b.classList.remove("opacity-50", "cursor-not-allowed")
+
+if (uiRunning) {
+b.innerText = "Stop Goose"
+b.classList.remove("bg-green-600")
+b.classList.add("bg-red-600")
+} else {
+b.innerText = "Start Goose"
+b.classList.remove("bg-red-600")
+b.classList.add("bg-green-600")
+}
+}
+
+async function toggle() {
+isTransitioning = true
+setButtonState()
+
+document.getElementById("logs").innerHTML = ""
+
+await fetch("/toggle")
+
+// wait for backend + UI to stabilize
+setTimeout(async () => {
+await update(true)
+isTransitioning = false
+setButtonState()
+}, 900)
+}
+
+function fmt(v) {
+v = Math.max(0, v)
+if (v > 1024 * 1024) return (v / 1024 / 1024).toFixed(2) + " GB"
+if (v > 1024) return (v / 1024).toFixed(2) + " MB"
+return v.toFixed(2) + " KB"
+}
+
+function init() {
+chart = new Chart(document.getElementById("usageChart"), {
+type: "line",
+data: {
+labels: data.labels,
+datasets: [
+{ label: "Upload KB", borderColor: "#22c55e", data: data.upload, tension: 0.3 },
+{ label: "Download KB", borderColor: "#3b82f6", data: data.download, tension: 0.3 },
+{ label: "Session Quota", borderColor: "#f59e0b", data: data.session, tension: 0.3 }
 ]
 },
-options:{
-responsive:true,
-maintainAspectRatio:false,
-scales:{x:{display:false}}
+options: {
+responsive: true,
+maintainAspectRatio: false,
+scales: { x: { display: false } }
 }
 })
 }
 
-function fmt(v){
-v=Math.max(0,v)
-if(v>1024*1024) return (v/1024/1024).toFixed(2)+" GB"
-if(v>1024) return (v/1024).toFixed(2)+" MB"
-return v.toFixed(2)+" KB"
-}
+let lastUpdate = 0
 
-function apply(){
-const b=document.getElementById("toggleBtn")
+async function update(force = false) {
 
-if(running){
-b.innerText="Stop Goose"
-b.classList.add("bg-red-600")
-b.classList.remove("bg-green-600")
-}else{
-b.innerText="Start Goose"
-b.classList.add("bg-green-600")
-b.classList.remove("bg-red-600")
-}
-}
+const now = Date.now()
+if (!force && now - lastUpdate < 10000) return
+lastUpdate = now
 
-async function loadConfig(){
-const c=await fetch("/config").then(r=>r.json())
+const s = await fetch("/status").then(r => r.json())
 
-document.getElementById("socks_host").value=c.socks_host||"127.0.0.1"
-document.getElementById("socks_port").value=c.socks_port||1080
-document.getElementById("socks_user").value=c.socks_user||""
-document.getElementById("socks_pass").value=c.socks_pass||""
-}
+const stats = s.stats || {}
 
-async function saveConfig(){
-await fetch("/config/update",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-socks_host:document.getElementById("socks_host").value,
-socks_port:document.getElementById("socks_port").value,
-socks_user:document.getElementById("socks_user").value,
-socks_pass:document.getElementById("socks_pass").value
-})
-})
-}
-
-async function toggle(){
-document.getElementById("logs").innerHTML=""
-const r=await fetch("/toggle").then(r=>r.json())
-running=r.running
-apply()
-}
-
-let lastUpdate=0
-
-async function update(){
-
-const now=Date.now()
-if(now-lastUpdate<10000) return
-lastUpdate=now
-
-const s=await fetch("/status").then(r=>r.json())
-
-running=!!s.running
-apply()
-
+// update status text first (source of truth)
 document.getElementById("status").innerText =
-running ? "🟢 Running" : "🔴 Stopped"
+s.running ? "🟢 Running" : "🔴 Stopped"
 
-const stats=s.stats||{}
+// sync button AFTER status update
+setButtonState()
 
-let u=Math.max(0,stats.upload_kb||0)
-let d=Math.max(0,stats.download_kb||0)
+let u = Math.max(0, stats.upload_kb || 0)
+let d = Math.max(0, stats.download_kb || 0)
 
-let sessionUsed=Math.max(0,stats.session_used||0)
+let sessionUsed = Math.max(0, stats.session_used || 0)
+let todayUsed = Math.max(0, stats.today_used || 0)
 
-let accounts=stats.accounts||[]
-let todayUsed=stats.today_used||0
-let quotaTotal=(accounts.length*ACCOUNT_QUOTA)||0
+let acc = stats.accounts || []
+let quota = (acc.length * ACCOUNT_QUOTA) || 0
 
-document.getElementById("active").innerText=stats.active??"-"
-document.getElementById("sessions").innerText=stats.sessions??"-"
-document.getElementById("upload").innerText=fmt(u)
-document.getElementById("download").innerText=fmt(d)
+document.getElementById("active").innerText = stats.active ?? "-"
+document.getElementById("sessions").innerText = stats.sessions ?? "-"
+document.getElementById("upload").innerText = fmt(u)
+document.getElementById("download").innerText = fmt(d)
 
 document.getElementById("today").innerText =
-`${todayUsed} / ~${quotaTotal}`
+`${todayUsed} / ~${quota}`
 
 document.getElementById("session").innerText =
-`${sessionUsed} / ~${quotaTotal}`
+`${sessionUsed} / ~${quota}`
 
 data.labels.push("")
 data.upload.push(u)
 data.download.push(d)
 data.session.push(sessionUsed)
 
-if(data.labels.length>25){
+if (data.labels.length > 25) {
 data.labels.shift()
 data.upload.shift()
 data.download.shift()
@@ -417,16 +423,14 @@ data.session.shift()
 
 chart.update()
 
-const l=await fetch("/logs").then(r=>r.json())
+const l = await fetch("/logs").then(r => r.json())
 document.getElementById("logs").innerHTML =
-l.logs.map(x=>`<div>${x}</div>`).join("")
-
+l.logs.map(x => `<div>${x}</div>`).join("")
 }
 
-setInterval(update,1000)
+setInterval(update, 1000)
 
 init()
-loadConfig()
 update()
 
 </script>
