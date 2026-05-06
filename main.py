@@ -32,20 +32,19 @@ def save_config(cfg):
 def parse_accounts(line):
     if "accounts=[" not in line:
         return None
-    start = line.find("accounts=[") + len("accounts=[")
+    start = line.find("accounts=[") + 10
     end = line.find("]", start)
     raw = line[start:end]
+
     accounts = []
     for part in raw.split("|"):
         part = part.strip()
-        if "today=" in part and "script=" in part:
+        if "today=" in part:
             accounts.append(part)
     return accounts
 
 def reader():
     global latest_stats, logs, process
-
-    accounts = []
 
     for line in process.stdout:
         line = line.strip()
@@ -60,12 +59,10 @@ def reader():
 
         acc = parse_accounts(line)
         if acc:
-            accounts = acc
-
             today_total = 0
             session_total = 0
 
-            for a in accounts:
+            for a in acc:
                 try:
                     today_total += int(a.split("today=")[1].split()[0])
                 except:
@@ -75,11 +72,9 @@ def reader():
                 except:
                     pass
 
-            total_quota = len(accounts) * QUOTA_PER_ACCOUNT
-
             latest_stats["today_used"] = today_total
             latest_stats["session_used"] = session_total
-            latest_stats["quota_total"] = total_quota
+            latest_stats["quota_total"] = len(acc) * QUOTA_PER_ACCOUNT
 
 @app.get("/toggle")
 def toggle():
@@ -123,8 +118,8 @@ def get_config():
 async def update_config(request: dict):
     cfg = load_config()
 
-    cfg["socks_host"] = request.get("socks_host", cfg.get("socks_host", "127.0.0.1"))
-    cfg["socks_port"] = int(request.get("socks_port", cfg.get("socks_port", 1080)))
+    cfg["socks_host"] = request.get("socks_host", "127.0.0.1")
+    cfg["socks_port"] = int(request.get("socks_port", 1080))
 
     if request.get("socks_user") is not None:
         cfg["socks_user"] = request["socks_user"]
@@ -132,7 +127,7 @@ async def update_config(request: dict):
         cfg["socks_pass"] = request["socks_pass"]
 
     save_config(cfg)
-    return {"status": "saved", "config": cfg}
+    return {"status": "saved"}
 
 HTML_PAGE = """
 <!DOCTYPE html>
@@ -141,7 +136,9 @@ HTML_PAGE = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gooseman</title>
+
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { background:#0b0f19 }
@@ -150,9 +147,7 @@ body { background:#0b0f19 }
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255,255,255,0.08);
 }
-.toggle-btn {
-  transition: all 0.35s ease;
-}
+.toggle-btn { transition: all 0.35s ease; }
 </style>
 </head>
 
@@ -162,76 +157,58 @@ body { background:#0b0f19 }
 
 <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
 <h1 class="text-xl sm:text-2xl font-bold">🦢 Gooseman</h1>
-
-<div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-xs sm:text-sm w-fit">
-Loading...
-</div>
+<div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-xs sm:text-sm">Loading...</div>
 </div>
 
 <button id="toggleBtn"
 onclick="toggle()"
-class="toggle-btn w-full sm:w-full mb-5 py-3 rounded-xl font-semibold text-base sm:text-lg bg-green-600">
+class="toggle-btn w-full mb-5 py-3 rounded-xl font-semibold text-base sm:text-lg bg-green-600">
 Start Goose
 </button>
 
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
 
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs sm:text-sm">Active</div>
-<div id="active" class="text-lg sm:text-xl">-</div>
-</div>
-
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs sm:text-sm">Sessions</div>
-<div id="sessions" class="text-lg sm:text-xl">-</div>
-</div>
-
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs sm:text-sm">Download</div>
-<div id="download" class="text-lg sm:text-xl">-</div>
-</div>
-
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs sm:text-sm">Upload</div>
-<div id="upload" class="text-lg sm:text-xl">-</div>
-</div>
+<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Active</div><div id="active" class="text-lg">-</div></div>
+<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Sessions</div><div id="sessions" class="text-lg">-</div></div>
+<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Download</div><div id="download" class="text-lg">-</div></div>
+<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Upload</div><div id="upload" class="text-lg">-</div></div>
 
 </div>
 
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-5">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
 
 <div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs sm:text-sm">Today's Quota</div>
-<div id="today" class="text-lg sm:text-xl">-</div>
+<div class="text-gray-400 text-xs">Today's Quota</div>
+<div id="today" class="text-lg">-</div>
 </div>
 
 <div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs sm:text-sm">Session Quota</div>
-<div id="session" class="text-lg sm:text-xl">-</div>
+<div class="text-gray-400 text-xs">Session Quota</div>
+<div id="session" class="text-lg">-</div>
 </div>
 
 </div>
 
-<div class="glass p-3 sm:p-4 rounded-xl mb-5">
+<!-- GRAPHS -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
 
-<h2 class="text-base sm:text-lg font-semibold mb-3">⚙️ SOCKS Config</h2>
+<div class="glass p-4 rounded-xl">
+<h2 class="text-base font-semibold mb-3">📊 Global Usage</h2>
+<div class="h-[220px]">
+<canvas id="globalChart"></canvas>
+</div>
+</div>
 
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-<input id="socks_host" class="p-2 bg-gray-900 rounded text-sm">
-<input id="socks_port" class="p-2 bg-gray-900 rounded text-sm">
-<input id="socks_user" class="p-2 bg-gray-900 rounded text-sm">
-<input id="socks_pass" class="p-2 bg-gray-900 rounded text-sm" type="password">
+<div class="glass p-4 rounded-xl">
+<h2 class="text-base font-semibold mb-3">👥 Per Account</h2>
+<div class="h-[220px]">
+<canvas id="accountChart"></canvas>
+</div>
+</div>
 
 </div>
 
-<button onclick="saveConfig()" class="mt-4 w-full bg-blue-600 px-4 py-2 rounded-xl text-sm sm:text-base">
-Save
-</button>
-
-</div>
-
-<div class="glass p-3 sm:p-4 rounded-xl h-[50vh] sm:h-[420px] overflow-y-scroll font-mono text-[10px] sm:text-xs">
+<div class="glass p-3 sm:p-4 rounded-xl h-[45vh] sm:h-[420px] overflow-y-scroll font-mono text-[10px] sm:text-xs">
 <div id="logs"></div>
 </div>
 
@@ -241,82 +218,176 @@ Save
 
 let running = false
 
-async function toggle(){
-document.getElementById("logs").innerHTML = ""
+const MAX_POINTS = 25
 
-const res = await fetch('/toggle').then(r=>r.json())
-running = res.running
-applyState()
+let globalChart
+let accountChart
+
+let globalData = {
+labels: [],
+upload: [],
+download: [],
+quota: []
 }
 
-function applyState(){
-const b = document.getElementById("toggleBtn")
+let accountSeries = {}
 
+function clamp(v){
+v = parseFloat(v)
+if(isNaN(v)) return 0
+return Math.max(0, v)
+}
+
+function initCharts(){
+
+globalChart = new Chart(document.getElementById("globalChart"),{
+type:"line",
+data:{
+labels:globalData.labels,
+datasets:[
+{label:"Upload",borderColor:"#22c55e",data:globalData.upload,tension:0.3},
+{label:"Download",borderColor:"#3b82f6",data:globalData.download,tension:0.3},
+{label:"Quota",borderColor:"#f59e0b",data:globalData.quota,tension:0.3}
+]
+},
+options:{
+responsive:true,
+maintainAspectRatio:false,
+scales:{x:{display:false}}
+}
+})
+
+accountChart = new Chart(document.getElementById("accountChart"),{
+type:"line",
+data:{
+labels:[],
+datasets:[]
+},
+options:{
+responsive:true,
+maintainAspectRatio:false,
+scales:{x:{display:false}}
+}
+})
+
+}
+
+function updateAccountChart(accounts){
+
+let labels = accountChart.data.labels
+labels.push("")
+
+if(labels.length > MAX_POINTS) labels.shift()
+
+let datasets = []
+
+accounts.forEach((acc,i)=>{
+
+let name = acc.name
+
+if(!accountSeries[name]){
+accountSeries[name] = Array(MAX_POINTS).fill(0)
+}
+
+accountSeries[name].push(acc.today)
+if(accountSeries[name].length > MAX_POINTS)
+accountSeries[name].shift()
+
+datasets.push({
+label:name,
+data:accountSeries[name],
+tension:0.3,
+borderColor:`hsl(${i*80},70%,60%)`
+})
+
+})
+
+accountChart.data.labels = labels
+accountChart.data.datasets = datasets
+accountChart.update()
+
+}
+
+async function toggle(){
+document.getElementById("logs").innerHTML=""
+const r=await fetch("/toggle").then(r=>r.json())
+running=r.running
+apply()
+}
+
+function apply(){
+const b=document.getElementById("toggleBtn")
 if(running){
-b.innerText = "Stop Goose"
-b.classList.remove("bg-green-600")
-b.classList.add("bg-red-600")
+b.innerText="Stop Goose"
+b.classList.replace("bg-green-600","bg-red-600")
 }else{
-b.innerText = "Start Goose"
-b.classList.remove("bg-red-600")
-b.classList.add("bg-green-600")
+b.innerText="Start Goose"
+b.classList.replace("bg-red-600","bg-green-600")
 }
 }
 
 async function update(){
-const s = await fetch('/status').then(r=>r.json())
-running = s.running
-applyState()
 
-document.getElementById("status").innerText =
-running ? "🟢 Running" : "🔴 Stopped"
+const s = await fetch("/status").then(r=>r.json())
+running = s.running
+apply()
+
+document.getElementById("status").innerText = running ? "🟢 Running" : "🔴 Stopped"
 
 if(s.stats){
+
+let u = clamp(s.stats.upload)
+let d = clamp(s.stats.download)
+let q = clamp(s.stats.today_used)
+
 document.getElementById("active").innerText = s.stats.active ?? "-"
 document.getElementById("sessions").innerText = s.stats.sessions ?? "-"
-document.getElementById("download").innerText = s.stats.download ?? "-"
-document.getElementById("upload").innerText = s.stats.upload ?? "-"
+document.getElementById("upload").innerText = u
+document.getElementById("download").innerText = d
 
 const t = s.stats.quota_total ?? 0
-document.getElementById("today").innerHTML =
-`${s.stats.today_used ?? 0} / ~${t}`
+document.getElementById("today").innerText = `${q} / ~${t}`
+document.getElementById("session").innerText = `${s.stats.session_used ?? 0} / ~${t}`
 
-document.getElementById("session").innerHTML =
-`${s.stats.session_used ?? 0} / ~${t}`
+globalData.labels.push("")
+globalData.upload.push(u)
+globalData.download.push(d)
+globalData.quota.push(q)
+
+if(globalData.labels.length > MAX_POINTS){
+globalData.labels.shift()
+globalData.upload.shift()
+globalData.download.shift()
+globalData.quota.shift()
 }
 
-const l = await fetch('/logs').then(r=>r.json())
+globalChart.update()
+
+if(s.stats.accounts){
+let accounts = []
+
+for(let a of s.stats.accounts){
+accounts.push({
+name: a.name || "acc",
+today: clamp(a.today)
+})
+}
+
+updateAccountChart(accounts)
+}
+
+}
+
+const l = await fetch("/logs").then(r=>r.json())
 document.getElementById("logs").innerHTML =
 l.logs.map(x=>`<div>${x}</div>`).join("")
-}
 
-async function loadConfig(){
-const c = await fetch('/config').then(r=>r.json())
-
-document.getElementById("socks_host").value = c.socks_host ?? ""
-document.getElementById("socks_port").value = c.socks_port ?? ""
-document.getElementById("socks_user").value = c.socks_user ?? ""
-document.getElementById("socks_pass").value = c.socks_pass ?? ""
-}
-
-async function saveConfig(){
-await fetch('/config/update',{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-socks_host:document.getElementById("socks_host").value,
-socks_port:document.getElementById("socks_port").value,
-socks_user:document.getElementById("socks_user").value || null,
-socks_pass:document.getElementById("socks_pass").value || null
-})
-})
-
-alert("Saved")
 }
 
 setInterval(update,1000)
+
+initCharts()
 update()
-loadConfig()
 
 </script>
 
