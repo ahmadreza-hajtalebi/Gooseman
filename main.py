@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 import subprocess
 import threading
 import re
+import os
 
 app = FastAPI()
 
@@ -40,12 +41,17 @@ def start():
     global process
 
     if not process or process.poll() is not None:
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
         process = subprocess.Popen(
-            ["./goose-client", "-config", "config.json"],
+            ["./goose-client", "-config", "client_config.json"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            cwd=base_dir   # 👈 THIS is the important fix
         )
+
         threading.Thread(target=reader, daemon=True).start()
 
     return {"status": "started"}
