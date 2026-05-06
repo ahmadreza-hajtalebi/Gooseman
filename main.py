@@ -29,6 +29,25 @@ def save_config(cfg):
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=4)
 
+def to_kb(val):
+    if not val:
+        return 0.0
+
+    val = str(val).upper().strip()
+
+    try:
+        if val.endswith("KB"):
+            return float(val[:-2])
+        if val.endswith("MB"):
+            return float(val[:-2]) * 1024
+        if val.endswith("GB"):
+            return float(val[:-2]) * 1024 * 1024
+        if val.endswith("B"):
+            return float(val[:-1]) / 1024
+        return float(val)
+    except:
+        return 0.0
+
 def parse_accounts(line):
     if "accounts=[" not in line:
         return None
@@ -40,7 +59,13 @@ def parse_accounts(line):
     for part in raw.split("|"):
         part = part.strip()
         if "today=" in part:
-            accounts.append(part)
+            try:
+                accounts.append({
+                    "name": part.split("@")[-1].split()[0],
+                    "today": int(part.split("today=")[1].split()[0])
+                })
+            except:
+                pass
     return accounts
 
 def reader():
@@ -54,26 +79,19 @@ def reader():
         if m:
             latest_stats["active"] = int(m.group(1))
             latest_stats["sessions"] = f"{m.group(2)}/{m.group(3)}"
+
             latest_stats["upload"] = m.group(4)
             latest_stats["download"] = m.group(5)
 
+            latest_stats["upload_kb"] = to_kb(m.group(4))
+            latest_stats["download_kb"] = to_kb(m.group(5))
+
         acc = parse_accounts(line)
         if acc:
-            today_total = 0
-            session_total = 0
+            latest_stats["accounts"] = acc
 
-            for a in acc:
-                try:
-                    today_total += int(a.split("today=")[1].split()[0])
-                except:
-                    pass
-                try:
-                    session_total += int(a.split("script=")[1].split()[0])
-                except:
-                    pass
-
+            today_total = sum(a["today"] for a in acc)
             latest_stats["today_used"] = today_total
-            latest_stats["session_used"] = session_total
             latest_stats["quota_total"] = len(acc) * QUOTA_PER_ACCOUNT
 
 @app.get("/toggle")
@@ -168,10 +186,25 @@ Start Goose
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
 
-<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Active</div><div id="active" class="text-lg">-</div></div>
-<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Sessions</div><div id="sessions" class="text-lg">-</div></div>
-<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Download</div><div id="download" class="text-lg">-</div></div>
-<div class="glass p-3 sm:p-4 rounded-xl"><div class="text-gray-400 text-xs">Upload</div><div id="upload" class="text-lg">-</div></div>
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs">Active</div>
+<div id="active" class="text-lg">-</div>
+</div>
+
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs">Sessions</div>
+<div id="sessions" class="text-lg">-</div>
+</div>
+
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs">Download</div>
+<div id="download" class="text-lg">-</div>
+</div>
+
+<div class="glass p-3 sm:p-4 rounded-xl">
+<div class="text-gray-400 text-xs">Upload</div>
+<div id="upload" class="text-lg">-</div>
+</div>
 
 </div>
 
@@ -189,26 +222,34 @@ Start Goose
 
 </div>
 
-<!-- GRAPHS -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+<div class="glass p-4 rounded-xl mb-5">
+<h2 class="text-base font-semibold mb-3">📊 Usage (KB)</h2>
 
-<div class="glass p-4 rounded-xl">
-<h2 class="text-base font-semibold mb-3">📊 Global Usage</h2>
-<div class="h-[220px]">
-<canvas id="globalChart"></canvas>
-</div>
-</div>
-
-<div class="glass p-4 rounded-xl">
-<h2 class="text-base font-semibold mb-3">👥 Per Account</h2>
-<div class="h-[220px]">
-<canvas id="accountChart"></canvas>
-</div>
+<div class="h-[240px]">
+<canvas id="usageChart"></canvas>
 </div>
 
 </div>
 
-<div class="glass p-3 sm:p-4 rounded-xl h-[45vh] sm:h-[420px] overflow-y-scroll font-mono text-[10px] sm:text-xs">
+<div class="glass p-4 rounded-xl mb-5">
+<h2 class="text-base font-semibold mb-3">⚙️ SOCKS Config</h2>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+<input id="socks_host" class="p-2 bg-gray-900 rounded text-sm">
+<input id="socks_port" class="p-2 bg-gray-900 rounded text-sm">
+<input id="socks_user" class="p-2 bg-gray-900 rounded text-sm">
+<input id="socks_pass" class="p-2 bg-gray-900 rounded text-sm" type="password">
+
+</div>
+
+<button onclick="saveConfig()" class="mt-4 w-full bg-blue-600 px-4 py-2 rounded-xl">
+Save
+</button>
+
+</div>
+
+<div class="glass p-3 sm:p-4 rounded-xl h-[45vh] overflow-y-scroll font-mono text-[10px] sm:text-xs">
 <div id="logs"></div>
 </div>
 
@@ -216,38 +257,26 @@ Start Goose
 
 <script>
 
-let running = false
+let running=false
 
-const MAX_POINTS = 25
+let chart
 
-let globalChart
-let accountChart
-
-let globalData = {
-labels: [],
-upload: [],
-download: [],
-quota: []
+let data={
+labels:[],
+upload:[],
+download:[],
+session:[],
 }
 
-let accountSeries = {}
-
-function clamp(v){
-v = parseFloat(v)
-if(isNaN(v)) return 0
-return Math.max(0, v)
-}
-
-function initCharts(){
-
-globalChart = new Chart(document.getElementById("globalChart"),{
+function init(){
+chart=new Chart(document.getElementById("usageChart"),{
 type:"line",
 data:{
-labels:globalData.labels,
+labels:data.labels,
 datasets:[
-{label:"Upload",borderColor:"#22c55e",data:globalData.upload,tension:0.3},
-{label:"Download",borderColor:"#3b82f6",data:globalData.download,tension:0.3},
-{label:"Quota",borderColor:"#f59e0b",data:globalData.quota,tension:0.3}
+{label:"Upload KB",borderColor:"#22c55e",data:data.upload,tension:0.3},
+{label:"Download KB",borderColor:"#3b82f6",data:data.download,tension:0.3},
+{label:"Session Quota",borderColor:"#f59e0b",data:data.session,tension:0.3}
 ]
 },
 options:{
@@ -256,56 +285,12 @@ maintainAspectRatio:false,
 scales:{x:{display:false}}
 }
 })
-
-accountChart = new Chart(document.getElementById("accountChart"),{
-type:"line",
-data:{
-labels:[],
-datasets:[]
-},
-options:{
-responsive:true,
-maintainAspectRatio:false,
-scales:{x:{display:false}}
-}
-})
-
 }
 
-function updateAccountChart(accounts){
-
-let labels = accountChart.data.labels
-labels.push("")
-
-if(labels.length > MAX_POINTS) labels.shift()
-
-let datasets = []
-
-accounts.forEach((acc,i)=>{
-
-let name = acc.name
-
-if(!accountSeries[name]){
-accountSeries[name] = Array(MAX_POINTS).fill(0)
-}
-
-accountSeries[name].push(acc.today)
-if(accountSeries[name].length > MAX_POINTS)
-accountSeries[name].shift()
-
-datasets.push({
-label:name,
-data:accountSeries[name],
-tension:0.3,
-borderColor:`hsl(${i*80},70%,60%)`
-})
-
-})
-
-accountChart.data.labels = labels
-accountChart.data.datasets = datasets
-accountChart.update()
-
+function fmt(v){
+if(v>1024*1024) return (v/1024/1024).toFixed(2)+" GB"
+if(v>1024) return (v/1024).toFixed(2)+" MB"
+return v.toFixed(2)+" KB"
 }
 
 async function toggle(){
@@ -326,67 +311,53 @@ b.classList.replace("bg-red-600","bg-green-600")
 }
 }
 
+let lastUpdate=0
+
 async function update(){
 
-const s = await fetch("/status").then(r=>r.json())
-running = s.running
-apply()
+const now=Date.now()
+if(now-lastUpdate<10000) return
+lastUpdate=now
 
-document.getElementById("status").innerText = running ? "🟢 Running" : "🔴 Stopped"
+const s=await fetch("/status").then(r=>r.json())
+running=s.running
+apply()
 
 if(s.stats){
 
-let u = clamp(s.stats.upload)
-let d = clamp(s.stats.download)
-let q = clamp(s.stats.today_used)
+let u=Math.max(0,s.stats.upload_kb||0)
+let d=Math.max(0,s.stats.download_kb||0)
+let q=Math.max(0,s.stats.session_used||0)
 
-document.getElementById("active").innerText = s.stats.active ?? "-"
-document.getElementById("sessions").innerText = s.stats.sessions ?? "-"
-document.getElementById("upload").innerText = u
-document.getElementById("download").innerText = d
+document.getElementById("active").innerText=s.stats.active??"-"
+document.getElementById("sessions").innerText=s.stats.sessions??"-"
+document.getElementById("upload").innerText=fmt(u)
+document.getElementById("download").innerText=fmt(d)
+document.getElementById("session").innerText=q
 
-const t = s.stats.quota_total ?? 0
-document.getElementById("today").innerText = `${q} / ~${t}`
-document.getElementById("session").innerText = `${s.stats.session_used ?? 0} / ~${t}`
+data.labels.push("")
+data.upload.push(u)
+data.download.push(d)
+data.session.push(q)
 
-globalData.labels.push("")
-globalData.upload.push(u)
-globalData.download.push(d)
-globalData.quota.push(q)
-
-if(globalData.labels.length > MAX_POINTS){
-globalData.labels.shift()
-globalData.upload.shift()
-globalData.download.shift()
-globalData.quota.shift()
+if(data.labels.length>25){
+data.labels.shift()
+data.upload.shift()
+data.download.shift()
+data.session.shift()
 }
 
-globalChart.update()
-
-if(s.stats.accounts){
-let accounts = []
-
-for(let a of s.stats.accounts){
-accounts.push({
-name: a.name || "acc",
-today: clamp(a.today)
-})
+chart.update()
 }
 
-updateAccountChart(accounts)
-}
-
-}
-
-const l = await fetch("/logs").then(r=>r.json())
-document.getElementById("logs").innerHTML =
-l.logs.map(x=>`<div>${x}</div>`).join("")
+const l=await fetch("/logs").then(r=>r.json())
+document.getElementById("logs").innerHTML=l.logs.map(x=>`<div>${x}</div>`).join("")
 
 }
 
 setInterval(update,1000)
 
-initCharts()
+init()
 update()
 
 </script>
