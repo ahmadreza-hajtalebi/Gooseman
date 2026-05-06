@@ -17,9 +17,27 @@ QUOTA_PER_ACCOUNT = 20000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "client_config.json")
 
+startup_error = None
+runtime_error = None
+
 stats_pattern = re.compile(
     r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)"
 )
+
+def check_integrity():
+    global startup_error
+
+    if not os.path.exists(CONFIG_PATH):
+        startup_error = "Missing client_config.json"
+        return False
+
+    if not os.path.exists(os.path.join(BASE_DIR, "goose-client")):
+        startup_error = "Missing goose-client binary"
+        return False
+
+    startup_error = None
+    return True
+
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
@@ -27,9 +45,11 @@ def load_config():
     with open(CONFIG_PATH, "r") as f:
         return json.load(f)
 
+
 def save_config(cfg):
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=4)
+
 
 def to_kb(val):
     if not val:
@@ -89,17 +109,19 @@ def parse_accounts(line):
 
 
 def reader():
-    global latest_stats, logs, process
+    global latest_stats, logs, process, runtime_error
 
     for line in process.stdout:
         line = line.strip()
         logs.append(line)
 
+        if "ERROR" in line:
+            runtime_error = line
+
         m = stats_pattern.search(line)
         if m:
             latest_stats["active"] = int(m.group(1))
             latest_stats["sessions"] = f"{m.group(2)}/{m.group(3)}"
-
             latest_stats["upload_kb"] = to_kb(m.group(4))
             latest_stats["download_kb"] = to_kb(m.group(5))
 
@@ -107,19 +129,17 @@ def reader():
         if acc:
             latest_stats["accounts"] = acc
 
-            # ✅ CORRECT MAPPING (FINAL FIX)
-            today_total = sum(a["today"] for a in acc)
-            session_total = sum(a["script"] for a in acc)
-
-            latest_stats["today_used"] = today_total
-            latest_stats["session_used"] = session_total
-
+            latest_stats["today_used"] = sum(a["today"] for a in acc)
+            latest_stats["session_used"] = sum(a["script"] for a in acc)
             latest_stats["quota_total"] = len(acc) * QUOTA_PER_ACCOUNT
 
 
 @app.get("/toggle")
 def toggle():
     global process, logs, latest_stats
+
+    if not check_integrity():
+        return {"running": False, "error": startup_error}
 
     if process and process.poll() is None:
         process.terminate()
@@ -145,7 +165,9 @@ def toggle():
 def status():
     return {
         "running": process and process.poll() is None,
-        "stats": latest_stats
+        "stats": latest_stats,
+        "startup_error": startup_error,
+        "runtime_error": runtime_error
     }
 
 
@@ -166,16 +188,16 @@ async def update_config(request: dict):
     cfg["socks_host"] = request.get("socks_host", "127.0.0.1")
     cfg["socks_port"] = int(request.get("socks_port", 1080))
 
-    if request.get("socks_user") is not None:
+    if "socks_user" in request:
         cfg["socks_user"] = request["socks_user"]
-    if request.get("socks_pass") is not None:
+    if "socks_pass" in request:
         cfg["socks_pass"] = request["socks_pass"]
 
     save_config(cfg)
     return {"status": "saved"}
 
-HTML_PAGE = """
-<!DOCTYPE html>
+
+HTML_PAGE = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -198,85 +220,61 @@ body { background:#0b0f19 }
 
 <body class="text-white font-sans">
 
-<div class="max-w-6xl mx-auto p-3 sm:p-6">
-
-<div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
-<h1 class="text-xl sm:text-2xl font-bold">🦢 Gooseman</h1>
-<div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-xs sm:text-sm">Loading...</div>
+<div id="errorBox" class="hidden fixed top-0 left-0 right-0 z-50 p-3">
+  <div class="glass p-4 rounded-xl flex justify-between items-center">
+    <div id="errorText" class="text-red-400 font-semibold"></div>
+    <div class="flex gap-2">
+      <button onclick="restart()" class="bg-red-600 px-3 py-1 rounded">Restart</button>
+      <button onclick="ignoreError()" class="bg-gray-600 px-3 py-1 rounded">Ignore</button>
+    </div>
+  </div>
 </div>
 
-<button id="toggleBtn"
-onclick="toggle()"
-class="toggle-btn w-full mb-5 py-3 rounded-xl font-semibold text-base sm:text-lg bg-green-600">
+<div class="max-w-6xl mx-auto p-4">
+
+<div class="flex justify-between mb-4">
+<h1 class="font-bold text-xl">🦢 Gooseman</h1>
+<div id="status" class="bg-gray-800 px-3 py-1 rounded">Loading...</div>
+</div>
+
+<button id="toggleBtn" onclick="toggle()"
+class="w-full py-3 rounded-xl bg-green-600 font-semibold">
 Start Goose
 </button>
 
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
 
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs">Active</div>
-<div id="active" class="text-lg">-</div>
+<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Active</div><div id="active">-</div></div>
+<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Sessions</div><div id="sessions">-</div></div>
+<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Download</div><div id="download">-</div></div>
+<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Upload</div><div id="upload">-</div></div>
+
+<div class="glass p-3 rounded-xl col-span-2">
+<div class="text-xs text-gray-400">Today's Quota</div>
+<div id="today">-</div>
 </div>
 
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs">Sessions</div>
-<div id="sessions" class="text-lg">-</div>
-</div>
-
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs">Download</div>
-<div id="download" class="text-lg">-</div>
-</div>
-
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs">Upload</div>
-<div id="upload" class="text-lg">-</div>
+<div class="glass p-3 rounded-xl col-span-2">
+<div class="text-xs text-gray-400">Session Quota</div>
+<div id="session">-</div>
 </div>
 
 </div>
 
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs">Today's Quota</div>
-<div id="today" class="text-lg">-</div>
+<div class="glass p-4 mt-4 rounded-xl">
+<canvas id="chart"></canvas>
 </div>
 
-<div class="glass p-3 sm:p-4 rounded-xl">
-<div class="text-gray-400 text-xs">Session Quota</div>
-<div id="session" class="text-lg">-</div>
+<div class="glass p-4 mt-4 rounded-xl">
+<h2>Config</h2>
+<input id="socks_host" class="bg-gray-900 p-2 w-full mt-2 rounded">
+<input id="socks_port" class="bg-gray-900 p-2 w-full mt-2 rounded">
+<input id="socks_user" class="bg-gray-900 p-2 w-full mt-2 rounded">
+<input id="socks_pass" type="password" class="bg-gray-900 p-2 w-full mt-2 rounded">
+<button onclick="saveConfig()" class="mt-3 bg-blue-600 px-4 py-2 rounded w-full">Save</button>
 </div>
 
-</div>
-
-<div class="glass p-4 rounded-xl mb-5">
-<h2 class="text-base font-semibold mb-3">📊 Usage (KB/Quota)</h2>
-
-<div class="h-[240px]">
-<canvas id="usageChart"></canvas>
-</div>
-
-</div>
-
-<div class="glass p-4 rounded-xl mb-5">
-<h2 class="text-base font-semibold mb-3">⚙️ SOCKS Config</h2>
-
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-<input id="socks_host" class="p-2 bg-gray-900 rounded text-sm">
-<input id="socks_port" class="p-2 bg-gray-900 rounded text-sm">
-<input id="socks_user" class="p-2 bg-gray-900 rounded text-sm">
-<input id="socks_pass" class="p-2 bg-gray-900 rounded text-sm" type="password">
-
-</div>
-
-<button onclick="saveConfig()" class="mt-4 w-full bg-blue-600 px-4 py-2 rounded-xl">
-Save
-</button>
-
-</div>
-
-<div class="glass p-3 sm:p-4 rounded-xl h-[45vh] overflow-y-scroll font-mono text-[10px] sm:text-xs">
+<div class="glass p-3 mt-4 rounded-xl h-64 overflow-y-scroll font-mono text-xs">
 <div id="logs"></div>
 </div>
 
@@ -284,153 +282,141 @@ Save
 
 <script>
 
+let running=false
 let chart
-let isTransitioning = false
 
-const ACCOUNT_QUOTA = 20000
+const ACCOUNT_QUOTA=20000
 
-let data = {
-labels: [],
-upload: [],
-download: [],
-session: []
-}
+let data={labels:[],u:[],d:[],s:[],t:[]}
 
-function getUiRunning() {
-const txt = document.getElementById("status").innerText || ""
-return txt.includes("Running")
-}
-
-function setButtonState() {
-const b = document.getElementById("toggleBtn")
-
-const uiRunning = getUiRunning()
-
-const locked = isTransitioning
-
-if (locked) {
-b.disabled = true
-b.classList.add("opacity-50", "cursor-not-allowed")
-return
-}
-
-b.disabled = false
-b.classList.remove("opacity-50", "cursor-not-allowed")
-
-if (uiRunning) {
-b.innerText = "Stop Goose"
-b.classList.remove("bg-green-600")
-b.classList.add("bg-red-600")
-} else {
-b.innerText = "Start Goose"
-b.classList.remove("bg-red-600")
-b.classList.add("bg-green-600")
-}
-}
-
-async function toggle() {
-isTransitioning = true
-setButtonState()
-
-document.getElementById("logs").innerHTML = ""
-
-await fetch("/toggle")
-
-// wait for backend + UI to stabilize
-setTimeout(async () => {
-await update(true)
-isTransitioning = false
-setButtonState()
-}, 900)
-}
-
-function fmt(v) {
-v = Math.max(0, v)
-if (v > 1024 * 1024) return (v / 1024 / 1024).toFixed(2) + " GB"
-if (v > 1024) return (v / 1024).toFixed(2) + " MB"
-return v.toFixed(2) + " KB"
-}
-
-function init() {
-chart = new Chart(document.getElementById("usageChart"), {
-type: "line",
-data: {
-labels: data.labels,
-datasets: [
-{ label: "Upload KB", borderColor: "#22c55e", data: data.upload, tension: 0.3 },
-{ label: "Download KB", borderColor: "#3b82f6", data: data.download, tension: 0.3 },
-{ label: "Session Quota", borderColor: "#f59e0b", data: data.session, tension: 0.3 }
+function init(){
+chart=new Chart(document.getElementById("chart"),{
+type:"line",
+data:{
+labels:data.labels,
+datasets:[
+{label:"Upload KB",data:data.u,borderColor:"#22c55e"},
+{label:"Download KB",data:data.d,borderColor:"#3b82f6"},
+{label:"Session",data:data.s,borderColor:"#f59e0b"},
+{label:"Today",data:data.t,borderColor:"#ef4444"}
 ]
 },
-options: {
-responsive: true,
-maintainAspectRatio: false,
-scales: { x: { display: false } }
-}
+options:{responsive:true,maintainAspectRatio:false}
 })
 }
 
-let lastUpdate = 0
+function fmt(v){
+if(v>1024*1024)return(v/1024/1024).toFixed(2)+" GB"
+if(v>1024)return(v/1024).toFixed(2)+" MB"
+return v.toFixed(2)+" KB"
+}
 
-async function update(force = false) {
+function sync(){
+let b=document.getElementById("toggleBtn")
+if(running){
+b.innerText="Stop Goose"
+b.classList.replace("bg-green-600","bg-red-600")
+}else{
+b.innerText="Start Goose"
+b.classList.replace("bg-red-600","bg-green-600")
+}
+}
 
-const now = Date.now()
-if (!force && now - lastUpdate < 10000) return
-lastUpdate = now
+async function toggle(){
+document.getElementById("logs").innerHTML=""
+let r=await fetch("/toggle").then(r=>r.json())
+running=r.running
+sync()
+}
 
-const s = await fetch("/status").then(r => r.json())
+function showError(m){
+document.getElementById("errorBox").classList.remove("hidden")
+document.getElementById("errorText").innerText=m
+}
 
-const stats = s.stats || {}
+function ignoreError(){
+document.getElementById("errorBox").classList.add("hidden")
+}
 
-// update status text first (source of truth)
-document.getElementById("status").innerText =
-s.running ? "🟢 Running" : "🔴 Stopped"
+async function restart(){
+await fetch("/toggle")
+ignoreError()
+}
 
-// sync button AFTER status update
-setButtonState()
+async function loadConfig(){
+let c=await fetch("/config").then(r=>r.json())
+socks_host.value=c.socks_host||""
+socks_port.value=c.socks_port||""
+socks_user.value=c.socks_user||""
+socks_pass.value=c.socks_pass||""
+}
 
-let u = Math.max(0, stats.upload_kb || 0)
-let d = Math.max(0, stats.download_kb || 0)
+async function saveConfig(){
+await fetch("/config/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+socks_host:socks_host.value,
+socks_port:socks_port.value,
+socks_user:socks_user.value,
+socks_pass:socks_pass.value
+})})
+}
 
-let sessionUsed = Math.max(0, stats.session_used || 0)
-let todayUsed = Math.max(0, stats.today_used || 0)
+let last=0
 
-let acc = stats.accounts || []
-let quota = (acc.length * ACCOUNT_QUOTA) || 0
+async function update(){
+let s=await fetch("/status").then(r=>r.json())
 
-document.getElementById("active").innerText = stats.active ?? "-"
-document.getElementById("sessions").innerText = stats.sessions ?? "-"
-document.getElementById("upload").innerText = fmt(u)
-document.getElementById("download").innerText = fmt(d)
+running=!!s.running
+sync()
 
-document.getElementById("today").innerText =
-`${todayUsed} / ~${quota}`
+document.getElementById("status").innerText=
+running?"🟢 Running":"🔴 Stopped"
 
-document.getElementById("session").innerText =
-`${sessionUsed} / ~${quota}`
+if(s.startup_error)showError(s.startup_error)
+if(s.runtime_error)showError(s.runtime_error)
+
+let st=s.stats||{}
+
+let u=st.upload_kb||0
+let d=st.download_kb||0
+let sess=st.session_used||0
+let today=st.today_used||0
+
+document.getElementById("active").innerText=st.active??"-"
+document.getElementById("sessions").innerText=st.sessions??"-"
+document.getElementById("upload").innerText=fmt(u)
+document.getElementById("download").innerText=fmt(d)
+
+document.getElementById("today").innerText=
+today+" / ~"+(st.quota_total||0)
+
+document.getElementById("session").innerText=
+sess+" / ~"+(st.quota_total||0)
 
 data.labels.push("")
-data.upload.push(u)
-data.download.push(d)
-data.session.push(sessionUsed)
+data.u.push(u)
+data.d.push(d)
+data.s.push(sess)
+data.t.push(today)
 
-if (data.labels.length > 25) {
+if(data.labels.length>25){
 data.labels.shift()
-data.upload.shift()
-data.download.shift()
-data.session.shift()
+data.u.shift()
+data.d.shift()
+data.s.shift()
+data.t.shift()
 }
 
 chart.update()
 
-const l = await fetch("/logs").then(r => r.json())
-document.getElementById("logs").innerHTML =
-l.logs.map(x => `<div>${x}</div>`).join("")
+let l=await fetch("/logs").then(r=>r.json())
+document.getElementById("logs").innerHTML=
+l.logs.map(x=>`<div>${x}</div>`).join("")
 }
 
-setInterval(update, 1000)
+setInterval(update,2000)
 
 init()
+loadConfig()
 update()
 
 </script>
