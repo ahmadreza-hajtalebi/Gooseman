@@ -17,7 +17,9 @@ QUOTA_PER_ACCOUNT = 20000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "client_config.json")
 
-stats_pattern = re.compile(r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)")
+stats_pattern = re.compile(
+    r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)"
+)
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
@@ -32,9 +34,7 @@ def save_config(cfg):
 def to_kb(val):
     if not val:
         return 0.0
-
     val = str(val).upper().strip()
-
     try:
         if val.endswith("KB"):
             return float(val[:-2])
@@ -48,6 +48,7 @@ def to_kb(val):
     except:
         return 0.0
 
+
 def parse_accounts(line):
     if "accounts=[" not in line:
         return None
@@ -60,6 +61,8 @@ def parse_accounts(line):
 
     for part in raw.split("|"):
         part = part.strip()
+        if not part:
+            continue
 
         try:
             name = part.split("@")[-1].split()[0]
@@ -84,6 +87,7 @@ def parse_accounts(line):
 
     return accounts
 
+
 def reader():
     global latest_stats, logs, process
 
@@ -96,9 +100,6 @@ def reader():
             latest_stats["active"] = int(m.group(1))
             latest_stats["sessions"] = f"{m.group(2)}/{m.group(3)}"
 
-            latest_stats["upload"] = m.group(4)
-            latest_stats["download"] = m.group(5)
-
             latest_stats["upload_kb"] = to_kb(m.group(4))
             latest_stats["download_kb"] = to_kb(m.group(5))
 
@@ -106,9 +107,15 @@ def reader():
         if acc:
             latest_stats["accounts"] = acc
 
+            # ✅ CORRECT MAPPING (FINAL FIX)
             today_total = sum(a["today"] for a in acc)
+            session_total = sum(a["script"] for a in acc)
+
             latest_stats["today_used"] = today_total
+            latest_stats["session_used"] = session_total
+
             latest_stats["quota_total"] = len(acc) * QUOTA_PER_ACCOUNT
+
 
 @app.get("/toggle")
 def toggle():
@@ -133,6 +140,7 @@ def toggle():
 
     return {"running": True}
 
+
 @app.get("/status")
 def status():
     return {
@@ -140,13 +148,16 @@ def status():
         "stats": latest_stats
     }
 
+
 @app.get("/logs")
 def get_logs():
     return {"logs": logs[-200:]}
 
+
 @app.get("/config")
 def get_config():
     return load_config()
+
 
 @app.post("/config/update")
 async def update_config(request: dict):
@@ -239,7 +250,7 @@ Start Goose
 </div>
 
 <div class="glass p-4 rounded-xl mb-5">
-<h2 class="text-base font-semibold mb-3">📊 Usage (KB)</h2>
+<h2 class="text-base font-semibold mb-3">📊 Usage (KB/Quota)</h2>
 
 <div class="h-[240px]">
 <canvas id="usageChart"></canvas>
