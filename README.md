@@ -47,7 +47,7 @@ Gooseman consists of two main parts:
 - Python 3.9+
 - FastAPI
 - Uvicorn
-- GooseRelayVPN binary (`goose-client`) placed in the same directory
+- GooseRelayVPN 1.6 linux binary (`goose-client`) placed in the same directory
 - `client_config.json` file in the project root
 
 ---
