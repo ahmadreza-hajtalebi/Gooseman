@@ -4,6 +4,7 @@ import subprocess
 import threading
 import re
 import os
+import json
 
 app = FastAPI()
 
@@ -13,104 +14,78 @@ latest_stats = {}
 
 QUOTA_PER_ACCOUNT = 20000
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(BASE_DIR, "client_config.json")
 
-# -------------------------
-# PARSING LOGS
-# -------------------------
+stats_pattern = re.compile(r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)")
 
-stats_pattern = re.compile(
-    r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)"
-)
+def load_config():
+    if not os.path.exists(CONFIG_PATH):
+        return {"socks_host": "127.0.0.1", "socks_port": 1080}
+    with open(CONFIG_PATH, "r") as f:
+        return json.load(f)
 
+def save_config(cfg):
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f, indent=4)
 
 def parse_accounts(line):
     if "accounts=[" not in line:
         return None
-
     start = line.find("accounts=[") + len("accounts=[")
     end = line.find("]", start)
     raw = line[start:end]
-
     accounts = []
     for part in raw.split("|"):
         part = part.strip()
         if "today=" in part and "script=" in part:
             accounts.append(part)
-
     return accounts
-
-
-# -------------------------
-# READER THREAD
-# -------------------------
 
 def reader():
     global latest_stats, logs, process
-
     accounts = []
-
     for line in process.stdout:
         line = line.strip()
         logs.append(line)
-
-        # basic stats
         m = stats_pattern.search(line)
         if m:
             latest_stats["active"] = int(m.group(1))
             latest_stats["sessions"] = f"{m.group(2)}/{m.group(3)}"
             latest_stats["upload"] = m.group(4)
             latest_stats["download"] = m.group(5)
-
-        # accounts + quota
         acc = parse_accounts(line)
         if acc:
             accounts = acc
-
             today_total = 0
             session_total = 0
-
             for a in accounts:
                 try:
                     today_total += int(a.split("today=")[1].split()[0])
                 except:
                     pass
-
                 try:
                     session_total += int(a.split("script=")[1].split()[0])
                 except:
                     pass
-
             total_quota = len(accounts) * QUOTA_PER_ACCOUNT
-
             latest_stats["today_used"] = today_total
             latest_stats["session_used"] = session_total
             latest_stats["quota_total"] = total_quota
 
-
-# -------------------------
-# CONTROL
-# -------------------------
-
 @app.get("/start")
 def start():
     global process
-
-    if not process or process.poll() is not None:
-
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-
+    if not process or process.poll() is None:
         process = subprocess.Popen(
             ["./goose-client", "-config", "client_config.json"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            cwd=base_dir
+            cwd=BASE_DIR
         )
-
         threading.Thread(target=reader, daemon=True).start()
-
     return {"status": "started"}
-
 
 @app.get("/stop")
 def stop():
@@ -119,159 +94,135 @@ def stop():
         process.terminate()
     return {"status": "stopped"}
 
-
 @app.get("/status")
 def status():
-    return {
-        "running": process and process.poll() is None,
-        "stats": latest_stats
-    }
-
+    return {"running": process and process.poll() is None, "stats": latest_stats}
 
 @app.get("/logs")
 def get_logs():
     return {"logs": logs[-80:]}
 
+@app.get("/config")
+def get_config():
+    return load_config()
 
-# -------------------------
-# DASHBOARD UI
-# -------------------------
+@app.post("/config/update")
+async def update_config(request: dict):
+    cfg = load_config()
+    cfg["socks_host"] = request.get("socks_host", cfg.get("socks_host", "127.0.0.1"))
+    cfg["socks_port"] = int(request.get("socks_port", cfg.get("socks_port", 1080)))
+    if request.get("socks_user") is not None:
+        cfg["socks_user"] = request["socks_user"]
+    if request.get("socks_pass") is not None:
+        cfg["socks_pass"] = request["socks_pass"]
+    save_config(cfg)
+    return {"status": "saved", "config": cfg}
 
 HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Gooseman Dashboard</title>
-
+<title>Gooseman</title>
 <script src="https://cdn.tailwindcss.com"></script>
-
 <style>
-body { background:#0b0f19; }
-.glass {
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.08);
-}
+body{background:#0b0f19}
+.glass{background:rgba(255,255,255,0.05);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08)}
 </style>
 </head>
-
 <body class="text-white font-sans">
-
 <div class="max-w-6xl mx-auto p-6">
 
-<!-- HEADER -->
 <div class="flex justify-between items-center mb-6">
-    <h1 class="text-2xl font-bold">🦢 Gooseman</h1>
-
-    <div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-sm">
-        Loading...
-    </div>
+<h1 class="text-2xl font-bold">🦢 Gooseman</h1>
+<div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-sm">Loading...</div>
 </div>
 
-<!-- BUTTONS -->
 <div class="flex gap-3 mb-6">
-    <button onclick="start()" class="bg-green-600 px-4 py-2 rounded-xl">
-        Start
-    </button>
-
-    <button onclick="stop()" class="bg-red-600 px-4 py-2 rounded-xl">
-        Stop
-    </button>
+<button onclick="start()" class="bg-green-600 px-4 py-2 rounded-xl">Start</button>
+<button onclick="stop()" class="bg-red-600 px-4 py-2 rounded-xl">Stop</button>
 </div>
 
-<!-- STATS -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-
-    <div class="glass p-4 rounded-xl">
-        <div class="text-gray-400 text-sm">Active</div>
-        <div id="active" class="text-xl">-</div>
-    </div>
-
-    <div class="glass p-4 rounded-xl">
-        <div class="text-gray-400 text-sm">Sessions</div>
-        <div id="sessions" class="text-xl">-</div>
-    </div>
-
-    <div class="glass p-4 rounded-xl">
-        <div class="text-gray-400 text-sm">Download</div>
-        <div id="download" class="text-xl">-</div>
-    </div>
-
-    <div class="glass p-4 rounded-xl">
-        <div class="text-gray-400 text-sm">Upload</div>
-        <div id="upload" class="text-xl">-</div>
-    </div>
-
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Active</div><div id="active" class="text-xl">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Sessions</div><div id="sessions" class="text-xl">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Download</div><div id="download" class="text-xl">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Upload</div><div id="upload" class="text-xl">-</div></div>
 </div>
 
-<!-- QUOTA -->
 <div class="grid grid-cols-2 gap-4 mb-6">
-
-    <div class="glass p-4 rounded-xl">
-        <div class="text-gray-400 text-sm">Today's Quota</div>
-        <div id="today" class="text-xl">-</div>
-    </div>
-
-    <div class="glass p-4 rounded-xl">
-        <div class="text-gray-400 text-sm">Session Quota</div>
-        <div id="session" class="text-xl">-</div>
-    </div>
-
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Today's Quota</div><div id="today" class="text-xl">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Session Quota</div><div id="session" class="text-xl">-</div></div>
 </div>
 
-<!-- LOGS -->
+<div class="glass p-4 rounded-xl mb-6">
+<h2 class="text-lg font-semibold mb-4">⚙️ SOCKS Configuration</h2>
+<div class="grid grid-cols-2 gap-4">
+<input id="socks_host" class="p-2 bg-gray-900 rounded border border-gray-700" placeholder="Host">
+<input id="socks_port" class="p-2 bg-gray-900 rounded border border-gray-700" placeholder="Port">
+<input id="socks_user" class="p-2 bg-gray-900 rounded border border-gray-700" placeholder="User">
+<input id="socks_pass" class="p-2 bg-gray-900 rounded border border-gray-700" placeholder="Pass" type="password">
+</div>
+<button onclick="saveConfig()" class="mt-4 bg-blue-600 px-4 py-2 rounded-xl">Save Config</button>
+</div>
+
 <div class="glass p-4 rounded-xl h-[420px] overflow-y-scroll font-mono text-xs">
-    <div id="logs"></div>
+<div id="logs"></div>
 </div>
 
 </div>
 
 <script>
 
-async function update() {
-    const s = await fetch('/status').then(r => r.json());
-
-    document.getElementById("status").innerText =
-        s.running ? "🟢 Running" : "🔴 Stopped";
-
-    if (s.stats) {
-        document.getElementById("active").innerText = s.stats.active ?? "-";
-        document.getElementById("sessions").innerText = s.stats.sessions ?? "-";
-        document.getElementById("download").innerText = s.stats.download ?? "-";
-        document.getElementById("upload").innerText = s.stats.upload ?? "-";
-
-        const total = s.stats.quota_total ?? 0;
-
-        const today = s.stats.today_used ?? 0;
-        const session = s.stats.session_used ?? 0;
-
-        // quota display with ~ prefix
-        document.getElementById("today").innerHTML =
-            `${today} / ~${total}`;
-
-        document.getElementById("session").innerHTML =
-            `${session} / ~${total}`;
-    }
-
-    const l = await fetch('/logs').then(r => r.json());
-
-    document.getElementById("logs").innerHTML =
-        l.logs.map(x => `<div>${x}</div>`).join("");
+async function update(){
+const s=await fetch('/status').then(r=>r.json());
+document.getElementById("status").innerText=s.running?"🟢 Running":"🔴 Stopped";
+if(s.stats){
+document.getElementById("active").innerText=s.stats.active??"-";
+document.getElementById("sessions").innerText=s.stats.sessions??"-";
+document.getElementById("download").innerText=s.stats.download??"-";
+document.getElementById("upload").innerText=s.stats.upload??"-";
+const t=s.stats.quota_total??0;
+document.getElementById("today").innerHTML=`${s.stats.today_used??0} / ~${t}`;
+document.getElementById("session").innerHTML=`${s.stats.session_used??0} / ~${t}`;
+}
+const l=await fetch('/logs').then(r=>r.json());
+document.getElementById("logs").innerHTML=l.logs.map(x=>`<div>${x}</div>`).join("");
 }
 
-function start(){ fetch('/start'); }
-function stop(){ fetch('/stop'); }
+async function loadConfig(){
+const c=await fetch('/config').then(r=>r.json());
+document.getElementById("socks_host").value=c.socks_host??"";
+document.getElementById("socks_port").value=c.socks_port??"";
+document.getElementById("socks_user").value=c.socks_user??"";
+document.getElementById("socks_pass").value=c.socks_pass??"";
+}
 
-setInterval(update, 1000);
-update();
+async function saveConfig(){
+await fetch('/config/update',{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+socks_host:document.getElementById("socks_host").value,
+socks_port:document.getElementById("socks_port").value,
+socks_user:document.getElementById("socks_user").value||null,
+socks_pass:document.getElementById("socks_pass").value||null
+})
+});
+alert("saved");
+}
+
+function start(){fetch('/start')}
+function stop(){fetch('/stop')}
+
+setInterval(update,1000)
+update()
+loadConfig()
 
 </script>
-
 </body>
 </html>
 """
-
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
