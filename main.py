@@ -15,7 +15,7 @@ QUOTA_PER_ACCOUNT = 20000
 
 
 # -------------------------
-# PARSING
+# PARSING LOGS
 # -------------------------
 
 stats_pattern = re.compile(
@@ -41,7 +41,7 @@ def parse_accounts(line):
 
 
 # -------------------------
-# READER
+# READER THREAD
 # -------------------------
 
 def reader():
@@ -61,11 +61,10 @@ def reader():
             latest_stats["upload"] = m.group(4)
             latest_stats["download"] = m.group(5)
 
-        # accounts + quota calc
+        # accounts + quota
         acc = parse_accounts(line)
         if acc:
             accounts = acc
-            latest_stats["accounts"] = len(accounts)
 
             today_total = 0
             session_total = 0
@@ -135,7 +134,7 @@ def get_logs():
 
 
 # -------------------------
-# DASHBOARD
+# DASHBOARD UI
 # -------------------------
 
 HTML_PAGE = """
@@ -143,7 +142,8 @@ HTML_PAGE = """
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Goosean</title>
+<title>Gooseman Dashboard</title>
+
 <script src="https://cdn.tailwindcss.com"></script>
 
 <style>
@@ -162,14 +162,22 @@ body { background:#0b0f19; }
 
 <!-- HEADER -->
 <div class="flex justify-between items-center mb-6">
-    <h1 class="text-2xl font-bold">🦢 Goosean</h1>
-    <div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-sm">Loading...</div>
+    <h1 class="text-2xl font-bold">🦢 Gooseman</h1>
+
+    <div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-sm">
+        Loading...
+    </div>
 </div>
 
 <!-- BUTTONS -->
 <div class="flex gap-3 mb-6">
-    <button onclick="start()" class="bg-green-600 px-4 py-2 rounded-xl">Start</button>
-    <button onclick="stop()" class="bg-red-600 px-4 py-2 rounded-xl">Stop</button>
+    <button onclick="start()" class="bg-green-600 px-4 py-2 rounded-xl">
+        Start
+    </button>
+
+    <button onclick="stop()" class="bg-red-600 px-4 py-2 rounded-xl">
+        Stop
+    </button>
 </div>
 
 <!-- STATS -->
@@ -229,10 +237,7 @@ async function update() {
 
     if (s.stats) {
         document.getElementById("active").innerText = s.stats.active ?? "-";
-
-        document.getElementById("sessions").innerText =
-            s.stats.sessions ?? "-";
-
+        document.getElementById("sessions").innerText = s.stats.sessions ?? "-";
         document.getElementById("download").innerText = s.stats.download ?? "-";
         document.getElementById("upload").innerText = s.stats.upload ?? "-";
 
@@ -241,14 +246,16 @@ async function update() {
         const today = s.stats.today_used ?? 0;
         const session = s.stats.session_used ?? 0;
 
-        document.getElementById("today").innerText =
-            `${today} / ${total}`;
+        // quota display with ~ prefix
+        document.getElementById("today").innerHTML =
+            `${today} / ~${total}`;
 
-        document.getElementById("session").innerText =
-            `${session} / ${total}`;
+        document.getElementById("session").innerHTML =
+            `${session} / ~${total}`;
     }
 
     const l = await fetch('/logs').then(r => r.json());
+
     document.getElementById("logs").innerHTML =
         l.logs.map(x => `<div>${x}</div>`).join("");
 }
