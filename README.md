@@ -1,4 +1,4 @@
-# Gooseman
+# 🦢 Gooseman
 
 Gooseman is a lightweight web dashboard for managing and monitoring a running GooseRelayVPN client on a local machine or LAN server.
 
@@ -15,6 +15,13 @@ It provides a simple control panel for starting and stopping the client, viewing
 - SOCKS5 configuration editor (host, port, optional username/password)
 - Responsive design for desktop and mobile devices
 - Lightweight FastAPI backend with no external dependencies beyond Python packages
+
+---
+
+## Keep in mind
+
+- The project is currently Linux only, and I'm too lazy to do anything for other platforms yet.
+- It uses `tailwindcss` and `jsdelivr` CDNs, which are as of now, still blocked in Iran. You can start the server just fine without those being loaded, it'll just miss the fanciness, aesthetics and the graph as well. 
 
 ---
 
