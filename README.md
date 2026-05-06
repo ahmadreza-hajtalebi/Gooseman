@@ -1,2 +1,83 @@
 # Gooseman
-Minimal, clean and lightweight web dashboard for controlling your 24/7 GooseRelayVPN client.
+
+Gooseman is a lightweight web dashboard for managing and monitoring a running GooseRelayVPN client on a local machine or LAN server.
+
+It provides a simple control panel for starting and stopping the client, viewing real-time logs, tracking usage statistics, and editing SOCKS proxy configuration through a browser interface.
+
+---
+
+## Features
+
+- Start and stop the GooseRelayVPN client from a web UI
+- Live log viewer with automatic updates
+- Real-time session and traffic statistics
+- Quota tracking per account and per session
+- SOCKS5 configuration editor (host, port, optional username/password)
+- Responsive design for desktop and mobile devices
+- Lightweight FastAPI backend with no external dependencies beyond Python packages
+
+---
+
+## Architecture
+
+Gooseman consists of two main parts:
+
+- **Backend (FastAPI)**
+  - Launches and manages the `goose-client` process
+  - Reads and parses logs from stdout
+  - Tracks runtime statistics and quota usage
+  - Exposes a simple HTTP API for the dashboard
+
+- **Frontend (Single-page HTML)**
+  - Built with TailwindCSS via CDN
+  - Connects to backend endpoints using JavaScript fetch API
+  - Displays logs, stats, and controls in real time
+
+---
+
+## Requirements
+
+- Python 3.9+
+- FastAPI
+- Uvicorn
+- GooseRelayVPN binary (`goose-client`) placed in the same directory
+- `client_config.json` file in the project root
+
+---
+
+## Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/Aydiniyom/Gooseman.git
+cd Gooseman
+```
+
+2. Install dependencies:
+
+```bash
+pip install requirements.txt
+```
+
+3. Move your `client_config.json` and `goose-client` files inside the project folder, in the root directory.
+
+---
+
+## Running
+
+Start the dashboard with:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 5000
+```
+
+Then you can access it via the host machine by visiting the URL `http://localhost:5000` or via other devices by `http://<host-machine-ip>:5000`.
+
+> If port `5000` fails to bind, simply give another random port that isn't likely to be prebound.
+
+---
+
+## Thank you...
+
+[@Kianmhz](https://github.com/Kianmhz) for making the wonderful project [GooseRelayVPN](https://github.com/Kianmhz/GooseRelayVPN/tree/main).
