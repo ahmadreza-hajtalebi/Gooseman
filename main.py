@@ -44,7 +44,9 @@ def parse_accounts(line):
 
 def reader():
     global latest_stats, logs, process
+
     accounts = []
+
     for line in process.stdout:
         line = line.strip()
         logs.append(line)
@@ -59,8 +61,10 @@ def reader():
         acc = parse_accounts(line)
         if acc:
             accounts = acc
+
             today_total = 0
             session_total = 0
+
             for a in accounts:
                 try:
                     today_total += int(a.split("today=")[1].split()[0])
@@ -77,33 +81,16 @@ def reader():
             latest_stats["session_used"] = session_total
             latest_stats["quota_total"] = total_quota
 
-@app.get("/start")
-def start():
-    global process
-    if not process or process.poll() is not None:
-        process = subprocess.Popen(
-            ["./goose-client", "-config", "client_config.json"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=BASE_DIR
-        )
-        threading.Thread(target=reader, daemon=True).start()
-    return {"running": True}
-
-@app.get("/stop")
-def stop():
-    global process
-    if process:
-        process.terminate()
-    return {"running": False}
-
 @app.get("/toggle")
 def toggle():
-    global process
+    global process, logs, latest_stats
+
     if process and process.poll() is None:
         process.terminate()
         return {"running": False}
+
+    logs = []
+    latest_stats = {}
 
     process = subprocess.Popen(
         ["./goose-client", "-config", "client_config.json"],
@@ -112,16 +99,21 @@ def toggle():
         text=True,
         cwd=BASE_DIR
     )
+
     threading.Thread(target=reader, daemon=True).start()
+
     return {"running": True}
 
 @app.get("/status")
 def status():
-    return {"running": process and process.poll() is None, "stats": latest_stats}
+    return {
+        "running": process and process.poll() is None,
+        "stats": latest_stats
+    }
 
 @app.get("/logs")
 def get_logs():
-    return {"logs": logs[-80:]}
+    return {"logs": logs[-200:]}
 
 @app.get("/config")
 def get_config():
@@ -130,12 +122,15 @@ def get_config():
 @app.post("/config/update")
 async def update_config(request: dict):
     cfg = load_config()
+
     cfg["socks_host"] = request.get("socks_host", cfg.get("socks_host", "127.0.0.1"))
     cfg["socks_port"] = int(request.get("socks_port", cfg.get("socks_port", 1080)))
+
     if request.get("socks_user") is not None:
         cfg["socks_user"] = request["socks_user"]
     if request.get("socks_pass") is not None:
         cfg["socks_pass"] = request["socks_pass"]
+
     save_config(cfg)
     return {"status": "saved", "config": cfg}
 
@@ -146,10 +141,17 @@ HTML_PAGE = """
 <meta charset="UTF-8">
 <title>Gooseman</title>
 <script src="https://cdn.tailwindcss.com"></script>
+
 <style>
-body{background:#0b0f19}
-.glass{background:rgba(255,255,255,0.05);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08)}
-.toggle-btn{transition:all 0.35s ease}
+body { background:#0b0f19 }
+.glass {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.toggle-btn {
+  transition: all 0.35s ease;
+}
 </style>
 </head>
 
@@ -162,31 +164,37 @@ body{background:#0b0f19}
 <div id="status" class="px-3 py-1 bg-gray-800 rounded-full text-sm">Loading...</div>
 </div>
 
-<button id="toggleBtn" onclick="toggle()" class="toggle-btn w-full mb-6 py-3 rounded-xl font-semibold text-lg bg-green-600 hover:opacity-90">
+<button id="toggleBtn"
+onclick="toggle()"
+class="toggle-btn w-full mb-6 py-3 rounded-xl font-semibold text-lg bg-green-600">
 Start Goose
 </button>
 
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Active</div><div id="active" class="text-xl">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Sessions</div><div id="sessions" class="text-xl">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Download</div><div id="download" class="text-xl">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Upload</div><div id="upload" class="text-xl">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Active</div><div id="active">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Sessions</div><div id="sessions">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Download</div><div id="download">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Upload</div><div id="upload">-</div></div>
 </div>
 
 <div class="grid grid-cols-2 gap-4 mb-6">
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Today's Quota</div><div id="today" class="text-xl">-</div></div>
-<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Session Quota</div><div id="session" class="text-xl">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Today's Quota</div><div id="today">-</div></div>
+<div class="glass p-4 rounded-xl"><div class="text-gray-400 text-sm">Session Quota</div><div id="session">-</div></div>
 </div>
 
 <div class="glass p-4 rounded-xl mb-6">
-<h2 class="text-lg font-semibold mb-4">⚙️ SOCKS Configuration</h2>
+<h2 class="text-lg font-semibold mb-4">⚙️ SOCKS Config</h2>
+
 <div class="grid grid-cols-2 gap-4">
-<input id="socks_host" class="p-2 bg-gray-900 rounded border border-gray-700">
-<input id="socks_port" class="p-2 bg-gray-900 rounded border border-gray-700">
-<input id="socks_user" class="p-2 bg-gray-900 rounded border border-gray-700">
-<input id="socks_pass" class="p-2 bg-gray-900 rounded border border-gray-700" type="password">
+<input id="socks_host" class="p-2 bg-gray-900 rounded">
+<input id="socks_port" class="p-2 bg-gray-900 rounded">
+<input id="socks_user" class="p-2 bg-gray-900 rounded">
+<input id="socks_pass" class="p-2 bg-gray-900 rounded" type="password">
 </div>
-<button onclick="saveConfig()" class="mt-4 bg-blue-600 px-4 py-2 rounded-xl">Save Config</button>
+
+<button onclick="saveConfig()" class="mt-4 bg-blue-600 px-4 py-2 rounded-xl">
+Save
+</button>
 </div>
 
 <div class="glass p-4 rounded-xl h-[420px] overflow-y-scroll font-mono text-xs">
@@ -200,53 +208,62 @@ Start Goose
 let running = false
 
 async function toggle(){
+document.getElementById("logs").innerHTML = ""
+
 const res = await fetch('/toggle').then(r=>r.json())
 running = res.running
 applyState()
 }
 
 function applyState(){
-const b=document.getElementById("toggleBtn")
+const b = document.getElementById("toggleBtn")
 
 if(running){
-b.innerText="Stop Goose"
+b.innerText = "Stop Goose"
 b.classList.remove("bg-green-600")
 b.classList.add("bg-red-600")
 }else{
-b.innerText="Start Goose"
+b.innerText = "Start Goose"
 b.classList.remove("bg-red-600")
 b.classList.add("bg-green-600")
 }
 }
 
 async function update(){
-const s=await fetch('/status').then(r=>r.json())
-running=s.running
+const s = await fetch('/status').then(r=>r.json())
+running = s.running
+
 applyState()
 
-document.getElementById("status").innerText=running?"🟢 Running":"🔴 Stopped"
+document.getElementById("status").innerText =
+running ? "🟢 Running" : "🔴 Stopped"
 
 if(s.stats){
-document.getElementById("active").innerText=s.stats.active??"-"
-document.getElementById("sessions").innerText=s.stats.sessions??"-"
-document.getElementById("download").innerText=s.stats.download??"-"
-document.getElementById("upload").innerText=s.stats.upload??"-"
+document.getElementById("active").innerText = s.stats.active ?? "-"
+document.getElementById("sessions").innerText = s.stats.sessions ?? "-"
+document.getElementById("download").innerText = s.stats.download ?? "-"
+document.getElementById("upload").innerText = s.stats.upload ?? "-"
 
-const t=s.stats.quota_total??0
-document.getElementById("today").innerHTML=`${s.stats.today_used??0} / ~${t}`
-document.getElementById("session").innerHTML=`${s.stats.session_used??0} / ~${t}`
+const t = s.stats.quota_total ?? 0
+document.getElementById("today").innerHTML =
+`${s.stats.today_used ?? 0} / ~${t}`
+
+document.getElementById("session").innerHTML =
+`${s.stats.session_used ?? 0} / ~${t}`
 }
 
-const l=await fetch('/logs').then(r=>r.json())
-document.getElementById("logs").innerHTML=l.logs.map(x=>`<div>${x}</div>`).join("")
+const l = await fetch('/logs').then(r=>r.json())
+document.getElementById("logs").innerHTML =
+l.logs.map(x=>`<div>${x}</div>`).join("")
 }
 
 async function loadConfig(){
-const c=await fetch('/config').then(r=>r.json())
-document.getElementById("socks_host").value=c.socks_host??""
-document.getElementById("socks_port").value=c.socks_port??""
-document.getElementById("socks_user").value=c.socks_user??""
-document.getElementById("socks_pass").value=c.socks_pass??""
+const c = await fetch('/config').then(r=>r.json())
+
+document.getElementById("socks_host").value = c.socks_host ?? ""
+document.getElementById("socks_port").value = c.socks_port ?? ""
+document.getElementById("socks_user").value = c.socks_user ?? ""
+document.getElementById("socks_pass").value = c.socks_pass ?? ""
 }
 
 async function saveConfig(){
@@ -256,11 +273,12 @@ headers:{"Content-Type":"application/json"},
 body:JSON.stringify({
 socks_host:document.getElementById("socks_host").value,
 socks_port:document.getElementById("socks_port").value,
-socks_user:document.getElementById("socks_user").value||null,
-socks_pass:document.getElementById("socks_pass").value||null
+socks_user:document.getElementById("socks_user").value || null,
+socks_pass:document.getElementById("socks_pass").value || null
 })
 })
-alert("saved")
+
+alert("Saved")
 }
 
 setInterval(update,1000)
