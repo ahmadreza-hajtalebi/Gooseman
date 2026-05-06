@@ -258,8 +258,9 @@ Save
 <script>
 
 let running=false
-
 let chart
+
+const ACCOUNT_QUOTA = 20000
 
 let data={
 labels:[],
@@ -288,9 +289,46 @@ scales:{x:{display:false}}
 }
 
 function fmt(v){
+v=Math.max(0,v)
 if(v>1024*1024) return (v/1024/1024).toFixed(2)+" GB"
 if(v>1024) return (v/1024).toFixed(2)+" MB"
 return v.toFixed(2)+" KB"
+}
+
+function apply(){
+const b=document.getElementById("toggleBtn")
+
+if(running){
+b.innerText="Stop Goose"
+b.classList.add("bg-red-600")
+b.classList.remove("bg-green-600")
+}else{
+b.innerText="Start Goose"
+b.classList.add("bg-green-600")
+b.classList.remove("bg-red-600")
+}
+}
+
+async function loadConfig(){
+const c=await fetch("/config").then(r=>r.json())
+
+document.getElementById("socks_host").value=c.socks_host||"127.0.0.1"
+document.getElementById("socks_port").value=c.socks_port||1080
+document.getElementById("socks_user").value=c.socks_user||""
+document.getElementById("socks_pass").value=c.socks_pass||""
+}
+
+async function saveConfig(){
+await fetch("/config/update",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+socks_host:document.getElementById("socks_host").value,
+socks_port:document.getElementById("socks_port").value,
+socks_user:document.getElementById("socks_user").value,
+socks_pass:document.getElementById("socks_pass").value
+})
+})
 }
 
 async function toggle(){
@@ -298,17 +336,6 @@ document.getElementById("logs").innerHTML=""
 const r=await fetch("/toggle").then(r=>r.json())
 running=r.running
 apply()
-}
-
-function apply(){
-const b=document.getElementById("toggleBtn")
-if(running){
-b.innerText="Stop Goose"
-b.classList.replace("bg-green-600","bg-red-600")
-}else{
-b.innerText="Start Goose"
-b.classList.replace("bg-red-600","bg-green-600")
-}
 }
 
 let lastUpdate=0
@@ -320,25 +347,39 @@ if(now-lastUpdate<10000) return
 lastUpdate=now
 
 const s=await fetch("/status").then(r=>r.json())
-running=s.running
+
+running=!!s.running
 apply()
 
-if(s.stats){
+document.getElementById("status").innerText =
+running ? "🟢 Running" : "🔴 Stopped"
 
-let u=Math.max(0,s.stats.upload_kb||0)
-let d=Math.max(0,s.stats.download_kb||0)
-let q=Math.max(0,s.stats.session_used||0)
+const stats=s.stats||{}
 
-document.getElementById("active").innerText=s.stats.active??"-"
-document.getElementById("sessions").innerText=s.stats.sessions??"-"
+let u=Math.max(0,stats.upload_kb||0)
+let d=Math.max(0,stats.download_kb||0)
+
+let sessionUsed=Math.max(0,stats.session_used||0)
+
+let accounts=stats.accounts||[]
+let todayUsed=stats.today_used||0
+let quotaTotal=(accounts.length*ACCOUNT_QUOTA)||0
+
+document.getElementById("active").innerText=stats.active??"-"
+document.getElementById("sessions").innerText=stats.sessions??"-"
 document.getElementById("upload").innerText=fmt(u)
 document.getElementById("download").innerText=fmt(d)
-document.getElementById("session").innerText=q
+
+document.getElementById("today").innerText =
+`${todayUsed} / ~${quotaTotal}`
+
+document.getElementById("session").innerText =
+`${sessionUsed} / ~${quotaTotal}`
 
 data.labels.push("")
 data.upload.push(u)
 data.download.push(d)
-data.session.push(q)
+data.session.push(sessionUsed)
 
 if(data.labels.length>25){
 data.labels.shift()
@@ -348,16 +389,17 @@ data.session.shift()
 }
 
 chart.update()
-}
 
 const l=await fetch("/logs").then(r=>r.json())
-document.getElementById("logs").innerHTML=l.logs.map(x=>`<div>${x}</div>`).join("")
+document.getElementById("logs").innerHTML =
+l.logs.map(x=>`<div>${x}</div>`).join("")
 
 }
 
 setInterval(update,1000)
 
 init()
+loadConfig()
 update()
 
 </script>
