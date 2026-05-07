@@ -14,6 +14,7 @@ It provides a simple control panel for starting and stopping the client, viewing
 - Live log viewer with automatic updates
 - Real-time session and traffic statistics
 - Quota tracking
+- Dashboard password authentication based on SOCKS5 proxy password 
 - SOCKS5 configuration editor (host, port, optional username/password)
 - Responsive design for desktop and mobile devices
 - Lightweight FastAPI backend with no external dependencies beyond Python packages
@@ -84,6 +85,12 @@ uvicorn main:app --host 0.0.0.0 --port 5000
 Then you can access it via the host machine by visiting the URL `http://localhost:5000` or via other devices by `http://<host-machine-ip>:5000`.
 
 > If port `5000` fails to bind, simply give another random port that isn't likely to be prebound.
+
+---
+
+## Updating
+
+Simply `cd` into the project directory and run `git pull`, and rerun the `uvicorn` command.
 
 ---
 
