@@ -19,6 +19,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "client_config.json")
 
 startup_error = None
 runtime_error = None
+ignored_errors = set()
 
 stats_pattern = re.compile(
     r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)"
@@ -42,6 +43,7 @@ def check_integrity():
 def load_config():
     if not os.path.exists(CONFIG_PATH):
         return {"socks_host": "127.0.0.1", "socks_port": 1080}
+
     with open(CONFIG_PATH, "r") as f:
         return json.load(f)
 
@@ -54,17 +56,24 @@ def save_config(cfg):
 def to_kb(val):
     if not val:
         return 0.0
+
     val = str(val).upper().strip()
+
     try:
         if val.endswith("KB"):
             return float(val[:-2])
+
         if val.endswith("MB"):
             return float(val[:-2]) * 1024
+
         if val.endswith("GB"):
             return float(val[:-2]) * 1024 * 1024
+
         if val.endswith("B"):
             return float(val[:-1]) / 1024
+
         return float(val)
+
     except:
         return 0.0
 
@@ -75,12 +84,14 @@ def parse_accounts(line):
 
     start = line.find("accounts=[") + 10
     end = line.find("]", start)
+
     raw = line[start:end]
 
     accounts = []
 
     for part in raw.split("|"):
         part = part.strip()
+
         if not part:
             continue
 
@@ -109,16 +120,20 @@ def parse_accounts(line):
 
 
 def reader():
-    global latest_stats, logs, process, runtime_error
+    global latest_stats
+    global logs
+    global runtime_error
 
     for line in process.stdout:
         line = line.strip()
+
         logs.append(line)
 
-        if "ERROR" in line:
+        if "ERROR" in line and line not in ignored_errors:
             runtime_error = line
 
         m = stats_pattern.search(line)
+
         if m:
             latest_stats["active"] = int(m.group(1))
             latest_stats["sessions"] = f"{m.group(2)}/{m.group(3)}"
@@ -126,6 +141,7 @@ def reader():
             latest_stats["download_kb"] = to_kb(m.group(5))
 
         acc = parse_accounts(line)
+
         if acc:
             latest_stats["accounts"] = acc
 
@@ -136,17 +152,26 @@ def reader():
 
 @app.get("/toggle")
 def toggle():
-    global process, logs, latest_stats
+    global process
+    global logs
+    global latest_stats
+    global runtime_error
+    global ignored_errors
 
     if not check_integrity():
         return {"running": False, "error": startup_error}
 
     if process and process.poll() is None:
         process.terminate()
+
+        ignored_errors = set()
+        runtime_error = None
+
         return {"running": False}
 
     logs = []
     latest_stats = {}
+    runtime_error = None
 
     process = subprocess.Popen(
         ["./goose-client", "-config", "client_config.json"],
@@ -159,6 +184,19 @@ def toggle():
     threading.Thread(target=reader, daemon=True).start()
 
     return {"running": True}
+
+
+@app.get("/ignore_error")
+def ignore_error(msg: str):
+    global runtime_error
+    global ignored_errors
+
+    ignored_errors.add(msg)
+
+    if runtime_error == msg:
+        runtime_error = None
+
+    return {"ok": True}
 
 
 @app.get("/status")
@@ -190,232 +228,533 @@ async def update_config(request: dict):
 
     if "socks_user" in request:
         cfg["socks_user"] = request["socks_user"]
+
     if "socks_pass" in request:
         cfg["socks_pass"] = request["socks_pass"]
 
     save_config(cfg)
+
     return {"status": "saved"}
 
 
-HTML_PAGE = """<!DOCTYPE html>
+HTML_PAGE = """
+<!DOCTYPE html>
 <html>
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Gooseman</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { background:#0b0f19 }
-.glass {
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.08);
+
+body {
+    background: #0b0f19;
 }
-.toggle-btn { transition: all 0.35s ease; }
+
+.glass {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+button {
+    transition:
+        background-color 0.35s ease,
+        transform 0.15s ease,
+        opacity 0.25s ease,
+        filter 0.25s ease;
+}
+
+button:hover {
+    transform: translateY(-1px) scale(1.01);
+    filter: brightness(1.08);
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+#toggleBtn {
+    transition:
+        background-color 0.4s ease,
+        transform 0.15s ease,
+        opacity 0.25s ease;
+}
+
+.logs-stopped {
+    opacity: 0.45;
+    transition: opacity 0.35s ease;
+}
+
+.logs-running {
+    opacity: 1;
+    transition: opacity 0.35s ease;
+}
+
 </style>
+
 </head>
 
 <body class="text-white font-sans">
 
 <div id="errorBox" class="hidden fixed top-0 left-0 right-0 z-50 p-3">
-  <div class="glass p-4 rounded-xl flex justify-between items-center">
-    <div id="errorText" class="text-red-400 font-semibold"></div>
-    <div class="flex gap-2">
-      <button onclick="restart()" class="bg-red-600 px-3 py-1 rounded">Restart</button>
-      <button onclick="ignoreError()" class="bg-gray-600 px-3 py-1 rounded">Ignore</button>
+
+    <div class="glass p-4 rounded-xl flex flex-col md:flex-row gap-3 justify-between items-center">
+
+        <div id="errorText" class="text-red-400 font-semibold break-all"></div>
+
+        <div class="flex gap-2">
+
+            <button onclick="restart()" class="bg-red-600 px-4 py-2 rounded-lg">
+                Restart
+            </button>
+
+            <button onclick="ignoreError()" class="bg-gray-700 px-4 py-2 rounded-lg">
+                Ignore
+            </button>
+
+        </div>
+
     </div>
-  </div>
+
 </div>
 
 <div class="max-w-6xl mx-auto p-4">
 
-<div class="flex justify-between mb-4">
-<h1 class="font-bold text-xl">🦢 Gooseman</h1>
-<div id="status" class="bg-gray-800 px-3 py-1 rounded">Loading...</div>
-</div>
+    <div class="flex justify-between items-center mb-4">
 
-<button id="toggleBtn" onclick="toggle()"
-class="w-full py-3 rounded-xl bg-green-600 font-semibold">
-Start Goose
-</button>
+        <h1 class="font-bold text-2xl">
+            🦢 Gooseman
+        </h1>
 
-<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+        <div id="status" class="bg-gray-800 px-3 py-1 rounded-full text-sm">
+            Loading...
+        </div>
 
-<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Active</div><div id="active">-</div></div>
-<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Sessions</div><div id="sessions">-</div></div>
-<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Download</div><div id="download">-</div></div>
-<div class="glass p-3 rounded-xl"><div class="text-xs text-gray-400">Upload</div><div id="upload">-</div></div>
+    </div>
 
-<div class="glass p-3 rounded-xl col-span-2">
-<div class="text-xs text-gray-400">Today's Quota</div>
-<div id="today">-</div>
-</div>
+    <button
+        id="toggleBtn"
+        onclick="toggle()"
+        class="w-full py-3 rounded-xl bg-green-600 font-semibold text-lg"
+    >
+        Start Goose
+    </button>
 
-<div class="glass p-3 rounded-xl col-span-2">
-<div class="text-xs text-gray-400">Session Quota</div>
-<div id="session">-</div>
-</div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
 
-</div>
+        <div class="glass p-4 rounded-xl">
+            <div class="text-xs text-gray-400">Active</div>
+            <div id="active">-</div>
+        </div>
 
-<div class="glass p-4 mt-4 rounded-xl">
-<canvas id="chart"></canvas>
-</div>
+        <div class="glass p-4 rounded-xl">
+            <div class="text-xs text-gray-400">Sessions</div>
+            <div id="sessions">-</div>
+        </div>
 
-<div class="glass p-4 mt-4 rounded-xl">
-<h2>Config</h2>
-<input id="socks_host" class="bg-gray-900 p-2 w-full mt-2 rounded">
-<input id="socks_port" class="bg-gray-900 p-2 w-full mt-2 rounded">
-<input id="socks_user" class="bg-gray-900 p-2 w-full mt-2 rounded">
-<input id="socks_pass" type="password" class="bg-gray-900 p-2 w-full mt-2 rounded">
-<button onclick="saveConfig()" class="mt-3 bg-blue-600 px-4 py-2 rounded w-full">Save</button>
-</div>
+        <div class="glass p-4 rounded-xl">
+            <div class="text-xs text-gray-400">Download</div>
+            <div id="download">-</div>
+        </div>
 
-<div class="glass p-3 mt-4 rounded-xl h-64 overflow-y-scroll font-mono text-xs">
-<div id="logs"></div>
-</div>
+        <div class="glass p-4 rounded-xl">
+            <div class="text-xs text-gray-400">Upload</div>
+            <div id="upload">-</div>
+        </div>
+
+        <div class="glass p-4 rounded-xl col-span-2">
+            <div class="text-xs text-gray-400">Today's Quota</div>
+            <div id="today">-</div>
+        </div>
+
+        <div class="glass p-4 rounded-xl col-span-2">
+            <div class="text-xs text-gray-400">Session Quota</div>
+            <div id="session">-</div>
+        </div>
+
+    </div>
+
+    <div class="glass p-4 mt-4 rounded-xl">
+
+        <div class="mb-3 font-semibold">
+            📊 Quota per usage (KB)
+        </div>
+
+        <div class="h-[300px]">
+            <canvas id="chart"></canvas>
+        </div>
+
+    </div>
+
+    <div class="glass p-4 mt-4 rounded-xl">
+
+        <h2 class="font-semibold mb-3">
+            ⚙️ SOCKS Config
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+            <input id="socks_host" class="bg-gray-900 p-2 rounded">
+            <input id="socks_port" class="bg-gray-900 p-2 rounded">
+
+            <input id="socks_user" class="bg-gray-900 p-2 rounded">
+
+            <input
+                id="socks_pass"
+                type="password"
+                class="bg-gray-900 p-2 rounded"
+            >
+
+        </div>
+
+        <button
+            onclick="saveConfig()"
+            class="mt-4 bg-blue-600 px-4 py-2 rounded-xl w-full"
+        >
+            Save
+        </button>
+
+    </div>
+
+    <div
+        id="logsBox"
+        class="glass p-3 mt-4 rounded-xl h-64 overflow-y-scroll font-mono text-xs logs-stopped"
+    >
+        <div id="logs"></div>
+    </div>
 
 </div>
 
 <script>
 
-let running=false
-let chart
+let running = false
+let busy = false
+let chart = null
+let currentError = null
 
-const ACCOUNT_QUOTA=20000
+let data = {
+    labels: [],
+    u: [],
+    d: [],
+    s: [],
+    t: []
+}
 
-let data={labels:[],u:[],d:[],s:[],t:[]}
+function initChart(){
 
-function init(){
-chart=new Chart(document.getElementById("chart"),{
-type:"line",
-data:{
-labels:data.labels,
-datasets:[
-{label:"Upload KB",data:data.u,borderColor:"#22c55e"},
-{label:"Download KB",data:data.d,borderColor:"#3b82f6"},
-{label:"Session",data:data.s,borderColor:"#f59e0b"},
-{label:"Today",data:data.t,borderColor:"#ef4444"}
-]
-},
-options:{responsive:true,maintainAspectRatio:false}
-})
+    chart = new Chart(document.getElementById("chart"), {
+
+        type: "line",
+
+        data: {
+
+            labels: data.labels,
+
+            datasets: [
+
+                {
+                    label: "Upload KB",
+                    data: data.u,
+                    borderColor: "#22c55e",
+                    tension: 0.35
+                },
+
+                {
+                    label: "Download KB",
+                    data: data.d,
+                    borderColor: "#3b82f6",
+                    tension: 0.35
+                },
+
+                {
+                    label: "Session",
+                    data: data.s,
+                    borderColor: "#f59e0b",
+                    tension: 0.35
+                },
+
+                {
+                    label: "Today",
+                    data: data.t,
+                    borderColor: "#ef4444",
+                    tension: 0.35
+                }
+
+            ]
+
+        },
+
+        options: {
+
+            responsive: true,
+            maintainAspectRatio: false,
+
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+
+        }
+
+    })
+
 }
 
 function fmt(v){
-if(v>1024*1024)return(v/1024/1024).toFixed(2)+" GB"
-if(v>1024)return(v/1024).toFixed(2)+" MB"
-return v.toFixed(2)+" KB"
+
+    if(v > 1024 * 1024)
+        return (v / 1024 / 1024).toFixed(2) + " GB"
+
+    if(v > 1024)
+        return (v / 1024).toFixed(2) + " MB"
+
+    return v.toFixed(2) + " KB"
+
 }
 
-function sync(){
-let b=document.getElementById("toggleBtn")
-if(running){
-b.innerText="Stop Goose"
-b.classList.replace("bg-green-600","bg-red-600")
-}else{
-b.innerText="Start Goose"
-b.classList.replace("bg-red-600","bg-green-600")
-}
+function syncButton(){
+
+    const b = document.getElementById("toggleBtn")
+
+    b.disabled = busy
+
+    if(running){
+
+        b.innerText = "Stop Goose"
+
+        b.classList.remove("bg-green-600")
+        b.classList.add("bg-red-600")
+
+    } else {
+
+        b.innerText = "Start Goose"
+
+        b.classList.remove("bg-red-600")
+        b.classList.add("bg-green-600")
+
+    }
+
 }
 
-async function toggle(){
-document.getElementById("logs").innerHTML=""
-let r=await fetch("/toggle").then(r=>r.json())
-running=r.running
-sync()
+function showError(msg){
+
+    currentError = msg
+
+    document
+        .getElementById("errorBox")
+        .classList
+        .remove("hidden")
+
+    document
+        .getElementById("errorText")
+        .innerText = msg
+
 }
 
-function showError(m){
-document.getElementById("errorBox").classList.remove("hidden")
-document.getElementById("errorText").innerText=m
+function hideError(){
+
+    currentError = null
+
+    document
+        .getElementById("errorBox")
+        .classList
+        .add("hidden")
+
 }
 
-function ignoreError(){
-document.getElementById("errorBox").classList.add("hidden")
+async function ignoreError(){
+
+    if(!currentError)
+        return
+
+    await fetch(
+        "/ignore_error?msg=" + encodeURIComponent(currentError)
+    )
+
+    hideError()
+
 }
 
 async function restart(){
-await fetch("/toggle")
-ignoreError()
+
+    busy = true
+    syncButton()
+
+    await fetch("/toggle")
+    await new Promise(r => setTimeout(r, 700))
+    await fetch("/toggle")
+
+    busy = false
+
+    hideError()
+
+    await update()
+
+}
+
+async function toggle(){
+
+    if(busy)
+        return
+
+    busy = true
+    syncButton()
+
+    document.getElementById("logs").innerHTML = ""
+
+    await fetch("/toggle")
+
+    setTimeout(async () => {
+
+        await update()
+
+        busy = false
+        syncButton()
+
+    }, 900)
+
 }
 
 async function loadConfig(){
-let c=await fetch("/config").then(r=>r.json())
-socks_host.value=c.socks_host||""
-socks_port.value=c.socks_port||""
-socks_user.value=c.socks_user||""
-socks_pass.value=c.socks_pass||""
+
+    const c = await fetch("/config").then(r => r.json())
+
+    socks_host.value = c.socks_host || ""
+    socks_port.value = c.socks_port || ""
+    socks_user.value = c.socks_user || ""
+    socks_pass.value = c.socks_pass || ""
+
 }
 
 async function saveConfig(){
-await fetch("/config/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-socks_host:socks_host.value,
-socks_port:socks_port.value,
-socks_user:socks_user.value,
-socks_pass:socks_pass.value
-})})
+
+    await fetch("/config/update", {
+
+        method: "POST",
+
+        headers: {
+            "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+
+            socks_host: socks_host.value,
+            socks_port: socks_port.value,
+            socks_user: socks_user.value,
+            socks_pass: socks_pass.value
+
+        })
+
+    })
+
 }
 
-let last=0
+let lastGraph = 0
 
 async function update(){
-let s=await fetch("/status").then(r=>r.json())
 
-running=!!s.running
-sync()
+    const s = await fetch("/status").then(r => r.json())
 
-document.getElementById("status").innerText=
-running?"🟢 Running":"🔴 Stopped"
+    running = !!s.running
 
-if(s.startup_error)showError(s.startup_error)
-if(s.runtime_error)showError(s.runtime_error)
+    syncButton()
 
-let st=s.stats||{}
+    document.getElementById("status").innerText =
+        running ? "🟢 Running" : "🔴 Stopped"
 
-let u=st.upload_kb||0
-let d=st.download_kb||0
-let sess=st.session_used||0
-let today=st.today_used||0
+    const logsBox = document.getElementById("logsBox")
 
-document.getElementById("active").innerText=st.active??"-"
-document.getElementById("sessions").innerText=st.sessions??"-"
-document.getElementById("upload").innerText=fmt(u)
-document.getElementById("download").innerText=fmt(d)
+    logsBox.classList.remove("logs-running")
+    logsBox.classList.remove("logs-stopped")
 
-document.getElementById("today").innerText=
-today+" / ~"+(st.quota_total||0)
+    logsBox.classList.add(
+        running ? "logs-running" : "logs-stopped"
+    )
 
-document.getElementById("session").innerText=
-sess+" / ~"+(st.quota_total||0)
+    if(s.startup_error){
+        showError(s.startup_error)
+    }
 
-data.labels.push("")
-data.u.push(u)
-data.d.push(d)
-data.s.push(sess)
-data.t.push(today)
+    if(s.runtime_error){
+        showError(s.runtime_error)
+    }
 
-if(data.labels.length>25){
-data.labels.shift()
-data.u.shift()
-data.d.shift()
-data.s.shift()
-data.t.shift()
+    const st = s.stats || {}
+
+    const u = st.upload_kb || 0
+    const d = st.download_kb || 0
+
+    const sess = st.session_used || 0
+    const today = st.today_used || 0
+
+    document.getElementById("active").innerText =
+        st.active ?? "-"
+
+    document.getElementById("sessions").innerText =
+        st.sessions ?? "-"
+
+    document.getElementById("upload").innerText =
+        fmt(u)
+
+    document.getElementById("download").innerText =
+        fmt(d)
+
+    document.getElementById("today").innerText =
+        today + " / ~" + (st.quota_total || 0)
+
+    document.getElementById("session").innerText =
+        sess + " / ~" + (st.quota_total || 0)
+
+    const now = Date.now()
+
+    if(now - lastGraph > 10000){
+
+        lastGraph = now
+
+        data.labels.push("")
+
+        data.u.push(u)
+        data.d.push(d)
+        data.s.push(sess)
+        data.t.push(today)
+
+        if(data.labels.length > 25){
+
+            data.labels.shift()
+            data.u.shift()
+            data.d.shift()
+            data.s.shift()
+            data.t.shift()
+
+        }
+
+        chart.update()
+
+    }
+
+    const l = await fetch("/logs").then(r => r.json())
+
+    document.getElementById("logs").innerHTML =
+        l.logs.map(x => `<div>${x}</div>`).join("")
+
 }
 
-chart.update()
+setInterval(update, 2000)
 
-let l=await fetch("/logs").then(r=>r.json())
-document.getElementById("logs").innerHTML=
-l.logs.map(x=>`<div>${x}</div>`).join("")
-}
-
-setInterval(update,2000)
-
-init()
+initChart()
 loadConfig()
 update()
 
