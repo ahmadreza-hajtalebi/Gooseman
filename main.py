@@ -40,84 +40,228 @@ HTML_PAGE = """
 
 <style>
 
-body {
-  background:#0b0f19;
+*{
+  box-sizing:border-box;
 }
 
-.glass {
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.08);
+html{
+  scroll-behavior:smooth;
 }
 
-.toggle-btn {
+body{
+  background:
+    radial-gradient(circle at top left,#172554 0%,transparent 35%),
+    radial-gradient(circle at bottom right,#3b0764 0%,transparent 35%),
+    #0b0f19;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  background:
+    linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015));
+  pointer-events:none;
+}
+
+.glass{
+  background:rgba(255,255,255,0.045);
+  backdrop-filter:blur(18px);
+  border:1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    0 10px 40px rgba(0,0,0,0.25),
+    inset 0 1px rgba(255,255,255,0.04);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.glass:hover{
+  transform:translateY(-2px);
+  border-color:rgba(255,255,255,0.14);
+  box-shadow:
+    0 20px 50px rgba(0,0,0,0.35),
+    0 0 30px rgba(59,130,246,0.08);
+}
+
+.toggle-btn{
   transition:
     background-color 0.35s ease,
-    transform 0.18s ease,
+    transform 0.16s ease,
     opacity 0.2s ease,
-    box-shadow 0.25s ease;
+    box-shadow 0.3s ease;
 }
 
-.btn {
+.btn{
   transition:
-    transform 0.15s ease,
+    transform 0.16s ease,
     opacity 0.2s ease,
     background-color 0.25s ease,
     box-shadow 0.25s ease;
 }
 
 .btn:hover,
-.toggle-btn:hover {
-  transform: translateY(-2px) scale(1.01);
-  opacity: 0.95;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+.toggle-btn:hover{
+  transform:translateY(-2px) scale(1.01);
+  opacity:0.96;
 }
 
 .btn:active,
-.toggle-btn:active {
-  transform: scale(0.98);
+.toggle-btn:active{
+  transform:scale(0.98);
 }
 
 .btn:disabled,
-.toggle-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+.toggle-btn:disabled{
+  opacity:0.45;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
 }
 
-.log-stopped {
-  opacity: 0.45;
-  transition: opacity 0.35s ease;
+.bg-green-600{
+  box-shadow:0 0 25px rgba(34,197,94,0.28);
 }
 
-.log-running {
-  opacity: 1;
-  transition: opacity 0.35s ease;
+.bg-red-600{
+  box-shadow:0 0 25px rgba(239,68,68,0.28);
 }
 
-input {
+.bg-blue-600{
+  box-shadow:0 0 25px rgba(37,99,235,0.22);
+}
+
+.log-stopped{
+  opacity:0.42;
+  filter:saturate(0.7);
+  transition:all 0.35s ease;
+}
+
+.log-running{
+  opacity:1;
+  transition:all 0.35s ease;
+}
+
+input{
   outline:none;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.25s ease,
+    transform 0.18s ease;
+  border:1px solid transparent;
 }
 
-input::placeholder {
+input:focus{
+  border-color:rgba(59,130,246,0.5);
+  box-shadow:
+    0 0 0 4px rgba(59,130,246,0.08),
+    0 0 20px rgba(59,130,246,0.15);
+  transform:translateY(-1px);
+}
+
+input::placeholder{
   color:#9ca3af;
 }
 
-#loginOverlay {
-  backdrop-filter: blur(18px);
+#loginOverlay{
+  backdrop-filter:blur(22px);
+  animation:fadeIn 0.3s ease;
+}
+
+#status{
+  border:1px solid rgba(255,255,255,0.08);
+  backdrop-filter:blur(12px);
+}
+
+canvas{
+  filter:drop-shadow(0 0 14px rgba(59,130,246,0.12));
+}
+
+::-webkit-scrollbar{
+  width:10px;
+}
+
+::-webkit-scrollbar-track{
+  background:transparent;
+}
+
+::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,0.12);
+  border-radius:999px;
+}
+
+::-webkit-scrollbar-thumb:hover{
+  background:rgba(255,255,255,0.2);
+}
+
+@keyframes pulseGlow{
+  0%{
+    box-shadow:0 0 0 rgba(34,197,94,0.2);
+  }
+  50%{
+    box-shadow:0 0 25px rgba(34,197,94,0.28);
+  }
+  100%{
+    box-shadow:0 0 0 rgba(34,197,94,0.2);
+  }
+}
+
+@keyframes fadeIn{
+  from{
+    opacity:0;
+    transform:translateY(10px);
+  }
+  to{
+    opacity:1;
+    transform:none;
+  }
+}
+
+.page-enter{
+  animation:fadeIn 0.45s ease;
+}
+
+.glow-blue{
+  position:absolute;
+  width:400px;
+  height:400px;
+  background:#2563eb;
+  opacity:0.08;
+  filter:blur(120px);
+  border-radius:999px;
+  top:-120px;
+  left:-120px;
+  pointer-events:none;
+}
+
+.glow-purple{
+  position:absolute;
+  width:400px;
+  height:400px;
+  background:#9333ea;
+  opacity:0.08;
+  filter:blur(120px);
+  border-radius:999px;
+  bottom:-120px;
+  right:-120px;
+  pointer-events:none;
 }
 
 </style>
 </head>
 
 <body class="text-white font-sans">
+<div class="glow-blue"></div>
+<div class="glow-purple"></div>
 
 <div id="loginOverlay"
 class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
 
-<div class="glass w-[92%] max-w-md p-6 rounded-3xl">
-
+<div class="glass w-[92%] max-w-md p-7 rounded-[2rem] shadow-2xl border border-white/10">
 <div class="text-3xl font-bold mb-2 text-center">🦢 Gooseman</div>
 
 <div class="text-gray-400 text-sm text-center mb-6">
@@ -172,14 +316,14 @@ Ignore
 </div>
 </div>
 
-<div class="max-w-6xl mx-auto p-4">
+<div class="max-w-6xl mx-auto p-4 relative z-10 page-enter">
 
 <div class="flex justify-between items-center mb-4 gap-3">
 
 <h1 class="font-bold text-2xl">🦢 Gooseman</h1>
 
 <div id="status"
-class="bg-gray-800 px-3 py-1 rounded-full text-sm">
+class="bg-gray-800/70 px-4 py-1.5 rounded-full text-sm shadow-lg">
 Loading...
 </div>
 
@@ -226,13 +370,17 @@ Start Goose
 
 </div>
 
-<div class="glass p-4 mt-4 rounded-2xl">
+<div class="glass p-5 mt-4 rounded-3xl overflow-hidden relative">
 
-<div class="font-semibold mb-3">
+<div class="absolute inset-0 opacity-[0.03]"
+style="background-image:linear-gradient(to right,white 1px,transparent 1px),linear-gradient(to bottom,white 1px,transparent 1px);background-size:24px 24px">
+</div>
+
+<div class="font-semibold mb-3 relative z-10">
 📊 Quota per usage (KB)
 </div>
 
-<div class="h-[280px]">
+<div class="h-[280px] relative z-10">
 <canvas id="chart"></canvas>
 </div>
 
@@ -397,12 +545,17 @@ let b = document.getElementById("toggleBtn")
 
 if(running){
 
+document.getElementById("status").style.animation =
+"pulseGlow 2s infinite"
+
 b.innerText = "Stop Goose"
 
 b.classList.remove("bg-green-600")
 b.classList.add("bg-red-600")
 
 }else{
+
+document.getElementById("status").style.animation = "none"
 
 b.innerText = "Start Goose"
 
@@ -608,7 +761,11 @@ chart.update()
 let l = await (await api("/logs")).json()
 
 document.getElementById("logs").innerHTML =
-l.logs.map(x => `<div>${x}</div>`).join("")
+l.logs.map(x => `
+<div class="py-1 border-b border-white/5 break-all">
+${x}
+</div>
+`).join("")
 
 }
 
