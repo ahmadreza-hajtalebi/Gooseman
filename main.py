@@ -510,7 +510,7 @@ sync()
 setTimeout(()=>{
 locked = false
 b.disabled = false
-}, 1200)
+}, 3000)
 
 }
 
