@@ -13,7 +13,7 @@ It provides a simple control panel for starting and stopping the client, viewing
 - Start and stop the GooseRelayVPN client from a web UI
 - Live log viewer with automatic updates
 - Real-time session and traffic statistics
-- Quota tracking per account and per session
+- Quota tracking
 - SOCKS5 configuration editor (host, port, optional username/password)
 - Responsive design for desktop and mobile devices
 - Lightweight FastAPI backend with no external dependencies beyond Python packages
