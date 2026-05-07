@@ -1,5 +1,5 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 import subprocess
 import threading
 import re
@@ -19,11 +19,627 @@ CONFIG_PATH = os.path.join(BASE_DIR, "client_config.json")
 
 startup_error = None
 runtime_error = None
+
 ignored_errors = set()
+authorized_tokens = set()
 
 stats_pattern = re.compile(
     r"active=(\d+).*sessions=(\d+)/(\d+).*bytes=([\d\.A-Z]+)/([\d\.A-Z]+)"
 )
+
+HTML_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gooseman</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body {
+  background:#0b0f19;
+}
+
+.glass {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.toggle-btn {
+  transition:
+    background-color 0.35s ease,
+    transform 0.18s ease,
+    opacity 0.2s ease,
+    box-shadow 0.25s ease;
+}
+
+.btn {
+  transition:
+    transform 0.15s ease,
+    opacity 0.2s ease,
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.btn:hover,
+.toggle-btn:hover {
+  transform: translateY(-2px) scale(1.01);
+  opacity: 0.95;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+}
+
+.btn:active,
+.toggle-btn:active {
+  transform: scale(0.98);
+}
+
+.btn:disabled,
+.toggle-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.log-stopped {
+  opacity: 0.45;
+  transition: opacity 0.35s ease;
+}
+
+.log-running {
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+input {
+  outline:none;
+}
+
+input::placeholder {
+  color:#9ca3af;
+}
+
+#loginOverlay {
+  backdrop-filter: blur(18px);
+}
+
+</style>
+</head>
+
+<body class="text-white font-sans">
+
+<div id="loginOverlay"
+class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
+
+<div class="glass w-[92%] max-w-md p-6 rounded-3xl">
+
+<div class="text-3xl font-bold mb-2 text-center">🦢 Gooseman</div>
+
+<div class="text-gray-400 text-sm text-center mb-6">
+Enter the SOCKS5 password to continue
+</div>
+
+<input
+id="loginPassword"
+type="password"
+placeholder="SOCKS5 password"
+class="w-full bg-gray-900 p-3 rounded-xl mb-4"
+/>
+
+<button
+onclick="login()"
+id="loginBtn"
+class="btn w-full bg-blue-600 rounded-xl py-3 font-semibold">
+Unlock
+</button>
+
+<div id="loginError"
+class="hidden text-red-400 text-sm mt-3 text-center">
+Invalid password
+</div>
+
+</div>
+</div>
+
+<div id="errorBox"
+class="hidden fixed top-0 left-0 right-0 z-50 p-3">
+
+<div class="glass p-4 rounded-xl flex justify-between items-center gap-4">
+
+<div id="errorText"
+class="text-red-400 font-semibold break-all"></div>
+
+<div class="flex gap-2 shrink-0">
+
+<button
+onclick="restart()"
+class="btn bg-red-600 px-3 py-1 rounded-lg">
+Restart
+</button>
+
+<button
+onclick="ignoreError()"
+class="btn bg-gray-600 px-3 py-1 rounded-lg">
+Ignore
+</button>
+
+</div>
+</div>
+</div>
+
+<div class="max-w-6xl mx-auto p-4">
+
+<div class="flex justify-between items-center mb-4 gap-3">
+
+<h1 class="font-bold text-2xl">🦢 Gooseman</h1>
+
+<div id="status"
+class="bg-gray-800 px-3 py-1 rounded-full text-sm">
+Loading...
+</div>
+
+</div>
+
+<button
+id="toggleBtn"
+onclick="toggle()"
+class="toggle-btn w-full py-3 rounded-2xl bg-green-600 font-semibold text-lg">
+Start Goose
+</button>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+
+<div class="glass p-3 rounded-2xl">
+<div class="text-xs text-gray-400">Active</div>
+<div id="active" class="text-lg">-</div>
+</div>
+
+<div class="glass p-3 rounded-2xl">
+<div class="text-xs text-gray-400">Sessions</div>
+<div id="sessions" class="text-lg">-</div>
+</div>
+
+<div class="glass p-3 rounded-2xl">
+<div class="text-xs text-gray-400">Download</div>
+<div id="download" class="text-lg">-</div>
+</div>
+
+<div class="glass p-3 rounded-2xl">
+<div class="text-xs text-gray-400">Upload</div>
+<div id="upload" class="text-lg">-</div>
+</div>
+
+<div class="glass p-3 rounded-2xl col-span-2">
+<div class="text-xs text-gray-400">Today's Quota</div>
+<div id="today" class="text-lg">0 / ~0</div>
+</div>
+
+<div class="glass p-3 rounded-2xl col-span-2">
+<div class="text-xs text-gray-400">Session Quota</div>
+<div id="session" class="text-lg">0 / ~0</div>
+</div>
+
+</div>
+
+<div class="glass p-4 mt-4 rounded-2xl">
+
+<div class="font-semibold mb-3">
+📊 Quota per usage (KB)
+</div>
+
+<div class="h-[280px]">
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<div class="glass p-4 mt-4 rounded-2xl">
+
+<div class="font-semibold mb-3">
+⚙️ SOCKS5 Config
+</div>
+
+<div class="grid md:grid-cols-2 gap-3">
+
+<input
+id="socks_host"
+placeholder="SOCKS5 Host (127.0.0.1)"
+class="bg-gray-900 p-3 rounded-xl"
+/>
+
+<input
+id="socks_port"
+placeholder="SOCKS5 Port (1080)"
+class="bg-gray-900 p-3 rounded-xl"
+/>
+
+<input
+id="socks_user"
+placeholder="SOCKS5 Username"
+class="bg-gray-900 p-3 rounded-xl"
+/>
+
+<input
+id="socks_pass"
+type="password"
+placeholder="SOCKS5 Password"
+class="bg-gray-900 p-3 rounded-xl"
+/>
+
+</div>
+
+<button
+onclick="saveConfig()"
+class="btn mt-4 bg-blue-600 px-4 py-3 rounded-xl w-full font-semibold">
+Save Configuration
+</button>
+
+</div>
+
+<div
+id="logBox"
+class="glass p-3 mt-4 rounded-2xl h-64 overflow-y-scroll font-mono text-xs log-stopped">
+
+<div id="logs"></div>
+
+</div>
+
+</div>
+
+<script>
+
+let running = false
+let chart
+let ignoredError = null
+let locked = false
+let authToken = null
+
+let data = {
+labels:[],
+u:[],
+d:[],
+s:[],
+t:[]
+}
+
+function authHeaders(){
+return {
+"Authorization": authToken || ""
+}
+}
+
+async function api(url, options={}){
+
+options.headers = {
+...(options.headers || {}),
+...authHeaders()
+}
+
+let r = await fetch(url, options)
+
+if(r.status === 401){
+
+document.getElementById("loginOverlay").style.display = "flex"
+
+throw new Error("Unauthorized")
+
+}
+
+return r
+
+}
+
+function init(){
+
+chart = new Chart(document.getElementById("chart"),{
+
+type:"line",
+
+data:{
+labels:data.labels,
+datasets:[
+{
+label:"Upload KB",
+data:data.u,
+borderColor:"#22c55e",
+tension:0.35
+},
+{
+label:"Download KB",
+data:data.d,
+borderColor:"#3b82f6",
+tension:0.35
+},
+{
+label:"Session Quota",
+data:data.s,
+borderColor:"#f59e0b",
+tension:0.35
+},
+{
+label:"Today's Quota",
+data:data.t,
+borderColor:"#ef4444",
+tension:0.35
+}
+]
+},
+
+options:{
+responsive:true,
+maintainAspectRatio:false
+}
+
+})
+
+}
+
+function fmt(v){
+
+if(v > 1024 * 1024)
+return (v/1024/1024).toFixed(2) + " GB"
+
+if(v > 1024)
+return (v/1024).toFixed(2) + " MB"
+
+return v.toFixed(2) + " KB"
+
+}
+
+function sync(){
+
+let b = document.getElementById("toggleBtn")
+
+if(running){
+
+b.innerText = "Stop Goose"
+
+b.classList.remove("bg-green-600")
+b.classList.add("bg-red-600")
+
+}else{
+
+b.innerText = "Start Goose"
+
+b.classList.remove("bg-red-600")
+b.classList.add("bg-green-600")
+
+}
+
+}
+
+function showError(msg){
+
+document.getElementById("errorBox").classList.remove("hidden")
+document.getElementById("errorText").innerText = msg
+
+}
+
+function hideError(){
+
+document.getElementById("errorBox").classList.add("hidden")
+
+}
+
+async function ignoreError(){
+
+if(!ignoredError) return
+
+await api("/ignore-error",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+error: ignoredError
+})
+})
+
+hideError()
+
+}
+
+async function restart(){
+
+await toggle()
+
+setTimeout(async ()=>{
+await toggle()
+}, 500)
+
+hideError()
+
+}
+
+async function login(){
+
+const password = document.getElementById("loginPassword").value
+
+const r = await fetch("/login",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+password
+})
+})
+
+const d = await r.json()
+
+if(!d.ok){
+
+document.getElementById("loginError").classList.remove("hidden")
+return
+
+}
+
+authToken = d.token
+
+document.getElementById("loginOverlay").style.display = "none"
+
+await loadConfig()
+await update()
+
+}
+
+async function toggle(){
+
+if(locked) return
+
+locked = true
+
+const b = document.getElementById("toggleBtn")
+
+b.disabled = true
+
+document.getElementById("logs").innerHTML = ""
+
+let r = await api("/toggle")
+let d = await r.json()
+
+running = d.running
+
+sync()
+
+setTimeout(()=>{
+locked = false
+b.disabled = false
+}, 1200)
+
+}
+
+async function loadConfig(){
+
+let c = await (await api("/config")).json()
+
+socks_host.value = c.socks_host || ""
+socks_port.value = c.socks_port || ""
+socks_user.value = c.socks_user || ""
+socks_pass.value = c.socks_pass || ""
+
+}
+
+async function saveConfig(){
+
+await api("/config/update",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+socks_host:socks_host.value,
+socks_port:socks_port.value,
+socks_user:socks_user.value,
+socks_pass:socks_pass.value
+})
+})
+
+}
+
+async function update(){
+
+let s = await (await api("/status")).json()
+
+running = !!s.running
+
+sync()
+
+document.getElementById("status").innerText =
+running ? "🟢 Running" : "🔴 Stopped"
+
+document.getElementById("logBox").className =
+running
+? "glass p-3 mt-4 rounded-2xl h-64 overflow-y-scroll font-mono text-xs log-running"
+: "glass p-3 mt-4 rounded-2xl h-64 overflow-y-scroll font-mono text-xs log-stopped"
+
+if(s.startup_error){
+showError(s.startup_error)
+}
+
+if(s.runtime_error){
+
+ignoredError = s.runtime_error
+showError(s.runtime_error)
+
+}
+
+let st = s.stats || {}
+
+let u = st.upload_kb || 0
+let d = st.download_kb || 0
+let sess = st.session_used || 0
+let today = st.today_used || 0
+
+document.getElementById("active").innerText = st.active ?? "-"
+document.getElementById("sessions").innerText = st.sessions ?? "-"
+document.getElementById("upload").innerText = fmt(u)
+document.getElementById("download").innerText = fmt(d)
+
+document.getElementById("today").innerText =
+today + " / ~" + (st.quota_total || 0)
+
+document.getElementById("session").innerText =
+sess + " / ~" + (st.quota_total || 0)
+
+data.labels.push("")
+data.u.push(u)
+data.d.push(d)
+data.s.push(sess)
+data.t.push(today)
+
+if(data.labels.length > 25){
+
+data.labels.shift()
+data.u.shift()
+data.d.shift()
+data.s.shift()
+data.t.shift()
+
+}
+
+chart.update()
+
+let l = await (await api("/logs")).json()
+
+document.getElementById("logs").innerHTML =
+l.logs.map(x => `<div>${x}</div>`).join("")
+
+}
+
+setInterval(async ()=>{
+
+if(authToken){
+
+try{
+await update()
+}catch{}
+
+}
+
+}, 3000)
+
+init()
+
+document.getElementById("loginOverlay").style.display = "flex"
+
+</script>
+
+</body>
+</html>
+"""
+
+def require_auth(request: Request):
+
+    token = request.headers.get("Authorization", "")
+
+    return token in authorized_tokens
+
 
 def check_integrity():
     global startup_error
@@ -41,25 +657,32 @@ def check_integrity():
 
 
 def load_config():
+
     if not os.path.exists(CONFIG_PATH):
-        return {"socks_host": "127.0.0.1", "socks_port": 1080}
+        return {
+            "socks_host": "127.0.0.1",
+            "socks_port": 1080
+        }
 
     with open(CONFIG_PATH, "r") as f:
         return json.load(f)
 
 
 def save_config(cfg):
+
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=4)
 
 
 def to_kb(val):
+
     if not val:
         return 0.0
 
     val = str(val).upper().strip()
 
     try:
+
         if val.endswith("KB"):
             return float(val[:-2])
 
@@ -79,6 +702,7 @@ def to_kb(val):
 
 
 def parse_accounts(line):
+
     if "accounts=[" not in line:
         return None
 
@@ -90,13 +714,13 @@ def parse_accounts(line):
     accounts = []
 
     for part in raw.split("|"):
+
         part = part.strip()
 
         if not part:
             continue
 
         try:
-            name = part.split("@")[-1].split()[0]
 
             today = 0
             script = 0
@@ -108,7 +732,6 @@ def parse_accounts(line):
                 script = int(part.split("script=")[1].split()[0])
 
             accounts.append({
-                "name": name,
                 "today": today,
                 "script": script
             })
@@ -120,11 +743,12 @@ def parse_accounts(line):
 
 
 def reader():
+
     global latest_stats
-    global logs
     global runtime_error
 
     for line in process.stdout:
+
         line = line.strip()
 
         logs.append(line)
@@ -135,23 +759,70 @@ def reader():
         m = stats_pattern.search(line)
 
         if m:
+
             latest_stats["active"] = int(m.group(1))
             latest_stats["sessions"] = f"{m.group(2)}/{m.group(3)}"
+
             latest_stats["upload_kb"] = to_kb(m.group(4))
             latest_stats["download_kb"] = to_kb(m.group(5))
 
         acc = parse_accounts(line)
 
         if acc:
-            latest_stats["accounts"] = acc
 
             latest_stats["today_used"] = sum(a["today"] for a in acc)
             latest_stats["session_used"] = sum(a["script"] for a in acc)
             latest_stats["quota_total"] = len(acc) * QUOTA_PER_ACCOUNT
 
 
+@app.post("/login")
+async def login(request: Request):
+
+    data = await request.json()
+
+    cfg = load_config()
+
+    real_password = cfg.get("socks_pass", "")
+
+    if data.get("password") != real_password:
+        return {"ok": False}
+
+    token = os.urandom(32).hex()
+
+    authorized_tokens.add(token)
+
+    return {
+        "ok": True,
+        "token": token
+    }
+
+
+@app.post("/ignore-error")
+async def ignore_error(request: Request):
+
+    if not require_auth(request):
+        return JSONResponse({"error":"unauthorized"}, status_code=401)
+
+    global runtime_error
+
+    data = await request.json()
+
+    err = data.get("error")
+
+    if err:
+        ignored_errors.add(err)
+
+    runtime_error = None
+
+    return {"ok": True}
+
+
 @app.get("/toggle")
-def toggle():
+def toggle(request: Request):
+
+    if not require_auth(request):
+        return JSONResponse({"error":"unauthorized"}, status_code=401)
+
     global process
     global logs
     global latest_stats
@@ -159,9 +830,10 @@ def toggle():
     global ignored_errors
 
     if not check_integrity():
-        return {"running": False, "error": startup_error}
+        return {"running": False}
 
     if process and process.poll() is None:
+
         process.terminate()
 
         ignored_errors = set()
@@ -186,21 +858,12 @@ def toggle():
     return {"running": True}
 
 
-@app.get("/ignore_error")
-def ignore_error(msg: str):
-    global runtime_error
-    global ignored_errors
-
-    ignored_errors.add(msg)
-
-    if runtime_error == msg:
-        runtime_error = None
-
-    return {"ok": True}
-
-
 @app.get("/status")
-def status():
+def status(request: Request):
+
+    if not require_auth(request):
+        return JSONResponse({"error":"unauthorized"}, status_code=401)
+
     return {
         "running": process and process.poll() is None,
         "stats": latest_stats,
@@ -210,559 +873,44 @@ def status():
 
 
 @app.get("/logs")
-def get_logs():
-    return {"logs": logs[-200:]}
+def get_logs(request: Request):
+
+    if not require_auth(request):
+        return JSONResponse({"error":"unauthorized"}, status_code=401)
+
+    return {
+        "logs": logs[-200:]
+    }
 
 
 @app.get("/config")
-def get_config():
+def get_config(request: Request):
+
+    if not require_auth(request):
+        return JSONResponse({"error":"unauthorized"}, status_code=401)
+
     return load_config()
 
 
 @app.post("/config/update")
-async def update_config(request: dict):
+async def update_config(request: Request):
+
+    if not require_auth(request):
+        return JSONResponse({"error":"unauthorized"}, status_code=401)
+
+    data = await request.json()
+
     cfg = load_config()
 
-    cfg["socks_host"] = request.get("socks_host", "127.0.0.1")
-    cfg["socks_port"] = int(request.get("socks_port", 1080))
-
-    if "socks_user" in request:
-        cfg["socks_user"] = request["socks_user"]
-
-    if "socks_pass" in request:
-        cfg["socks_pass"] = request["socks_pass"]
+    cfg["socks_host"] = data.get("socks_host", "127.0.0.1")
+    cfg["socks_port"] = int(data.get("socks_port", 1080))
+    cfg["socks_user"] = data.get("socks_user", "")
+    cfg["socks_pass"] = data.get("socks_pass", "")
 
     save_config(cfg)
 
-    return {"status": "saved"}
+    return {"status":"saved"}
 
-
-HTML_PAGE = """
-<!DOCTYPE html>
-<html>
-<head>
-
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Gooseman</title>
-
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<style>
-
-body {
-    background: #0b0f19;
-}
-
-.glass {
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.08);
-}
-
-button {
-    transition:
-        background-color 0.35s ease,
-        transform 0.15s ease,
-        opacity 0.25s ease,
-        filter 0.25s ease;
-}
-
-button:hover {
-    transform: translateY(-1px) scale(1.01);
-    filter: brightness(1.08);
-}
-
-button:active {
-    transform: scale(0.98);
-}
-
-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none !important;
-}
-
-#toggleBtn {
-    transition:
-        background-color 0.4s ease,
-        transform 0.15s ease,
-        opacity 0.25s ease;
-}
-
-.logs-stopped {
-    opacity: 0.45;
-    transition: opacity 0.35s ease;
-}
-
-.logs-running {
-    opacity: 1;
-    transition: opacity 0.35s ease;
-}
-
-</style>
-
-</head>
-
-<body class="text-white font-sans">
-
-<div id="errorBox" class="hidden fixed top-0 left-0 right-0 z-50 p-3">
-
-    <div class="glass p-4 rounded-xl flex flex-col md:flex-row gap-3 justify-between items-center">
-
-        <div id="errorText" class="text-red-400 font-semibold break-all"></div>
-
-        <div class="flex gap-2">
-
-            <button onclick="restart()" class="bg-red-600 px-4 py-2 rounded-lg">
-                Restart
-            </button>
-
-            <button onclick="ignoreError()" class="bg-gray-700 px-4 py-2 rounded-lg">
-                Ignore
-            </button>
-
-        </div>
-
-    </div>
-
-</div>
-
-<div class="max-w-6xl mx-auto p-4">
-
-    <div class="flex justify-between items-center mb-4">
-
-        <h1 class="font-bold text-2xl">
-            🦢 Gooseman
-        </h1>
-
-        <div id="status" class="bg-gray-800 px-3 py-1 rounded-full text-sm">
-            Loading...
-        </div>
-
-    </div>
-
-    <button
-        id="toggleBtn"
-        onclick="toggle()"
-        class="w-full py-3 rounded-xl bg-green-600 font-semibold text-lg"
-    >
-        Start Goose
-    </button>
-
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-xs text-gray-400">Active</div>
-            <div id="active">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-xs text-gray-400">Sessions</div>
-            <div id="sessions">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-xs text-gray-400">Download</div>
-            <div id="download">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl">
-            <div class="text-xs text-gray-400">Upload</div>
-            <div id="upload">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl col-span-2">
-            <div class="text-xs text-gray-400">Today's Quota</div>
-            <div id="today">-</div>
-        </div>
-
-        <div class="glass p-4 rounded-xl col-span-2">
-            <div class="text-xs text-gray-400">Session Quota</div>
-            <div id="session">-</div>
-        </div>
-
-    </div>
-
-    <div class="glass p-4 mt-4 rounded-xl">
-
-        <div class="mb-3 font-semibold">
-            📊 Quota per usage (KB)
-        </div>
-
-        <div class="h-[300px]">
-            <canvas id="chart"></canvas>
-        </div>
-
-    </div>
-
-    <div class="glass p-4 mt-4 rounded-xl">
-
-        <h2 class="font-semibold mb-3">
-            ⚙️ SOCKS Config
-        </h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-            <input id="socks_host" class="bg-gray-900 p-2 rounded">
-            <input id="socks_port" class="bg-gray-900 p-2 rounded">
-
-            <input id="socks_user" class="bg-gray-900 p-2 rounded">
-
-            <input
-                id="socks_pass"
-                type="password"
-                class="bg-gray-900 p-2 rounded"
-            >
-
-        </div>
-
-        <button
-            onclick="saveConfig()"
-            class="mt-4 bg-blue-600 px-4 py-2 rounded-xl w-full"
-        >
-            Save
-        </button>
-
-    </div>
-
-    <div
-        id="logsBox"
-        class="glass p-3 mt-4 rounded-xl h-64 overflow-y-scroll font-mono text-xs logs-stopped"
-    >
-        <div id="logs"></div>
-    </div>
-
-</div>
-
-<script>
-
-let running = false
-let busy = false
-let chart = null
-let currentError = null
-
-let data = {
-    labels: [],
-    u: [],
-    d: [],
-    s: [],
-    t: []
-}
-
-function initChart(){
-
-    chart = new Chart(document.getElementById("chart"), {
-
-        type: "line",
-
-        data: {
-
-            labels: data.labels,
-
-            datasets: [
-
-                {
-                    label: "Upload KB",
-                    data: data.u,
-                    borderColor: "#22c55e",
-                    tension: 0.35
-                },
-
-                {
-                    label: "Download KB",
-                    data: data.d,
-                    borderColor: "#3b82f6",
-                    tension: 0.35
-                },
-
-                {
-                    label: "Session",
-                    data: data.s,
-                    borderColor: "#f59e0b",
-                    tension: 0.35
-                },
-
-                {
-                    label: "Today",
-                    data: data.t,
-                    borderColor: "#ef4444",
-                    tension: 0.35
-                }
-
-            ]
-
-        },
-
-        options: {
-
-            responsive: true,
-            maintainAspectRatio: false,
-
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-
-        }
-
-    })
-
-}
-
-function fmt(v){
-
-    if(v > 1024 * 1024)
-        return (v / 1024 / 1024).toFixed(2) + " GB"
-
-    if(v > 1024)
-        return (v / 1024).toFixed(2) + " MB"
-
-    return v.toFixed(2) + " KB"
-
-}
-
-function syncButton(){
-
-    const b = document.getElementById("toggleBtn")
-
-    b.disabled = busy
-
-    if(running){
-
-        b.innerText = "Stop Goose"
-
-        b.classList.remove("bg-green-600")
-        b.classList.add("bg-red-600")
-
-    } else {
-
-        b.innerText = "Start Goose"
-
-        b.classList.remove("bg-red-600")
-        b.classList.add("bg-green-600")
-
-    }
-
-}
-
-function showError(msg){
-
-    currentError = msg
-
-    document
-        .getElementById("errorBox")
-        .classList
-        .remove("hidden")
-
-    document
-        .getElementById("errorText")
-        .innerText = msg
-
-}
-
-function hideError(){
-
-    currentError = null
-
-    document
-        .getElementById("errorBox")
-        .classList
-        .add("hidden")
-
-}
-
-async function ignoreError(){
-
-    if(!currentError)
-        return
-
-    await fetch(
-        "/ignore_error?msg=" + encodeURIComponent(currentError)
-    )
-
-    hideError()
-
-}
-
-async function restart(){
-
-    busy = true
-    syncButton()
-
-    await fetch("/toggle")
-    await new Promise(r => setTimeout(r, 700))
-    await fetch("/toggle")
-
-    busy = false
-
-    hideError()
-
-    await update()
-
-}
-
-async function toggle(){
-
-    if(busy)
-        return
-
-    busy = true
-    syncButton()
-
-    document.getElementById("logs").innerHTML = ""
-
-    await fetch("/toggle")
-
-    setTimeout(async () => {
-
-        await update()
-
-        busy = false
-        syncButton()
-
-    }, 900)
-
-}
-
-async function loadConfig(){
-
-    const c = await fetch("/config").then(r => r.json())
-
-    socks_host.value = c.socks_host || ""
-    socks_port.value = c.socks_port || ""
-    socks_user.value = c.socks_user || ""
-    socks_pass.value = c.socks_pass || ""
-
-}
-
-async function saveConfig(){
-
-    await fetch("/config/update", {
-
-        method: "POST",
-
-        headers: {
-            "Content-Type": "application/json"
-        },
-
-        body: JSON.stringify({
-
-            socks_host: socks_host.value,
-            socks_port: socks_port.value,
-            socks_user: socks_user.value,
-            socks_pass: socks_pass.value
-
-        })
-
-    })
-
-}
-
-let lastGraph = 0
-
-async function update(){
-
-    const s = await fetch("/status").then(r => r.json())
-
-    running = !!s.running
-
-    syncButton()
-
-    document.getElementById("status").innerText =
-        running ? "🟢 Running" : "🔴 Stopped"
-
-    const logsBox = document.getElementById("logsBox")
-
-    logsBox.classList.remove("logs-running")
-    logsBox.classList.remove("logs-stopped")
-
-    logsBox.classList.add(
-        running ? "logs-running" : "logs-stopped"
-    )
-
-    if(s.startup_error){
-        showError(s.startup_error)
-    }
-
-    if(s.runtime_error){
-        showError(s.runtime_error)
-    }
-
-    const st = s.stats || {}
-
-    const u = st.upload_kb || 0
-    const d = st.download_kb || 0
-
-    const sess = st.session_used || 0
-    const today = st.today_used || 0
-
-    document.getElementById("active").innerText =
-        st.active ?? "-"
-
-    document.getElementById("sessions").innerText =
-        st.sessions ?? "-"
-
-    document.getElementById("upload").innerText =
-        fmt(u)
-
-    document.getElementById("download").innerText =
-        fmt(d)
-
-    document.getElementById("today").innerText =
-        today + " / ~" + (st.quota_total || 0)
-
-    document.getElementById("session").innerText =
-        sess + " / ~" + (st.quota_total || 0)
-
-    const now = Date.now()
-
-    if(now - lastGraph > 10000){
-
-        lastGraph = now
-
-        data.labels.push("")
-
-        data.u.push(u)
-        data.d.push(d)
-        data.s.push(sess)
-        data.t.push(today)
-
-        if(data.labels.length > 25){
-
-            data.labels.shift()
-            data.u.shift()
-            data.d.shift()
-            data.s.shift()
-            data.t.shift()
-
-        }
-
-        chart.update()
-
-    }
-
-    const l = await fetch("/logs").then(r => r.json())
-
-    document.getElementById("logs").innerHTML =
-        l.logs.map(x => `<div>${x}</div>`).join("")
-
-}
-
-setInterval(update, 2000)
-
-initChart()
-loadConfig()
-update()
-
-</script>
-
-</body>
-</html>
-"""
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
