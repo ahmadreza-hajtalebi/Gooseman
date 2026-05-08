@@ -70,17 +70,30 @@ HTML_PAGE = """
   box-sizing:border-box;
 }
 
+html,
+body{
+  min-height:100%;
+}
+
 html{
   scroll-behavior:smooth;
 }
 
 body{
+  margin:0;
   min-height:100vh;
   overflow-x:hidden;
+
   background:
     radial-gradient(circle at top left,#172554 0%,transparent 35%),
     radial-gradient(circle at bottom right,#3b0764 0%,transparent 35%),
     #0b0f19;
+
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+
+  color:white;
+  font-family:sans-serif;
 }
 
 body::before{
@@ -125,6 +138,8 @@ body::before{
 }
 
 input{
+  width:100%;
+  min-width:0;
   outline:none;
   border:1px solid transparent;
   transition:.2s ease;
@@ -183,7 +198,7 @@ input:focus{
 
 </head>
 
-<body class="text-white font-sans">
+<body>
 
 <div class="glow blue"></div>
 <div class="glow purple"></div>
@@ -192,12 +207,14 @@ input:focus{
 
 <div
   id="loginOverlay"
-  class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl p-4"
 >
 
-  <div class="glass w-[92%] max-w-md rounded-[2rem] p-7">
+  <div
+    class="glass w-full max-w-md rounded-[2rem] p-6 sm:p-7 overflow-hidden"
+  >
 
-    <h1 class="text-3xl font-bold text-center mb-2">
+    <h1 class="text-3xl font-bold text-center mb-2 break-words">
       🦢 Gooseman
     </h1>
 
@@ -209,7 +226,7 @@ input:focus{
       id="loginPassword"
       type="password"
       placeholder="SOCKS5 password"
-      class="w-full bg-gray-900 rounded-xl p-3 mb-4"
+      class="bg-gray-900 rounded-xl p-3 mb-4"
     />
 
     <button
@@ -383,6 +400,7 @@ input:focus{
   </div>
 
 </div>
+
 
 <script>
 
