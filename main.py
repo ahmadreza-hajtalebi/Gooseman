@@ -337,6 +337,11 @@ input:focus{
 
   </div>
 
+  <div class="mt-3 px-1 text-xs text-gray-400/80 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-blue-400/70"></div>
+    <span>Statistic numbers can take a while to update.</span>
+  </div>
+
   <!-- CHART -->
 
   <div class="glass p-5 mt-4 rounded-3xl">
