@@ -182,13 +182,23 @@ input:focus{
   }
 }
 
+.btn-glow-green{
+  box-shadow:
+    0 0 18px rgba(34,197,94,.28),
+    0 0 38px rgba(34,197,94,.12);
+}
+
+.btn-glow-red{
+  box-shadow:
+    0 0 18px rgba(239,68,68,.28),
+    0 0 38px rgba(239,68,68,.12);
+}
+
 </style>
 
 </head>
 
 <body>
-
-
 
 <!-- LOGIN -->
 
@@ -296,7 +306,7 @@ input:focus{
   <button
     id="toggleBtn"
     onclick="toggle()"
-    class="btn w-full py-3 rounded-2xl bg-green-600 font-semibold text-lg"
+    class="btn btn-glow-green w-full py-3 rounded-2xl bg-green-600 font-semibold text-lg"
   >
     Start Goose
   </button>
@@ -460,6 +470,9 @@ function sync(){
 
   b.classList.toggle("bg-green-600", !running)
   b.classList.toggle("bg-red-600", running)
+
+  b.classList.toggle("btn-glow-green", !running)
+  b.classList.toggle("btn-glow-red", running)
 }
 
 function showError(msg){
