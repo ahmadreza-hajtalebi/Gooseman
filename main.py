@@ -167,18 +167,6 @@ input:focus{
   pointer-events:none;
 }
 
-.glow.blue{
-  background:var(--blue);
-  top:-120px;
-  left:-120px;
-}
-
-.glow.purple{
-  background:#9333ea;
-  bottom:-120px;
-  right:-120px;
-}
-
 ::-webkit-scrollbar{
   width:10px;
 }
