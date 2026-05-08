@@ -200,8 +200,7 @@ input:focus{
 
 <body>
 
-<div class="glow blue"></div>
-<div class="glow purple"></div>
+
 
 <!-- LOGIN -->
 
