@@ -407,6 +407,13 @@ const data = {
   t: []
 }
 
+let lastGraphValues = {
+  upload: null,
+  download: null,
+  session: null,
+  today: null
+}
+
 const api = async (url, options = {}) => {
 
   options.headers = {
@@ -601,11 +608,34 @@ async function update(){
   $("session").innerText =
     `${st.session_used || 0} / ~${st.quota_total || 0}`
 
+const upload = st.upload_kb || 0
+const download = st.download_kb || 0
+const session = st.session_used || 0
+const today = st.today_used || 0
+
+const graphChanged =
+  upload !== lastGraphValues.upload ||
+  download !== lastGraphValues.download ||
+  session !== lastGraphValues.session ||
+  today !== lastGraphValues.today
+
+if(graphChanged){
+
+  lastGraphValues = {
+    upload,
+    download,
+    session,
+    today
+  }
+
   pushData(data.labels, "")
-  pushData(data.u, st.upload_kb || 0)
-  pushData(data.d, st.download_kb || 0)
-  pushData(data.s, st.session_used || 0)
-  pushData(data.t, st.today_used || 0)
+  pushData(data.u, upload)
+  pushData(data.d, download)
+  pushData(data.s, session)
+  pushData(data.t, today)
+
+  chart.update()
+}
 
   chart.update()
 
