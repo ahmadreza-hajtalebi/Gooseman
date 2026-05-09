@@ -69,7 +69,7 @@ cd Gooseman
 2. Install dependencies:
 
 ```bash
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 3. Move your `client_config.json` and `goose-client` files inside the project folder, in the root directory.
