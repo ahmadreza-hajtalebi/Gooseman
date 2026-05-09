@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import threading
+import sys
 
 app = FastAPI()
 
@@ -26,13 +27,22 @@ app.mount(
 )
 
 # =========================
+# SHUSH
+# =========================
+
+def get_binary_path():
+    if sys.platform.startswith("win"):
+        return os.path.join(BASE_DIR, "goose-client.exe")
+    return os.path.join(BASE_DIR, "goose-client")
+
+# =========================
 # CONFIG
 # =========================
 
 QUOTA_PER_ACCOUNT = 20_000
 
 CONFIG_PATH = os.path.join(BASE_DIR, "client_config.json")
-BINARY_PATH = os.path.join(BASE_DIR, "goose-client")
+BINARY_PATH = get_binary_path()
 
 # =========================
 # STATE
@@ -273,12 +283,16 @@ def toggle(request: Request):
     latest_stats = {}
     runtime_error = None
 
+    binary = get_binary_path()
+
     process = subprocess.Popen(
-        ["./goose-client", "-config", "client_config.json"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        cwd=BASE_DIR
+      [binary, "-config", "client_config.json"],
+      stdout=subprocess.PIPE,
+      stderr=subprocess.STDOUT,
+      cwd=BASE_DIR,
+      text=True,
+      encoding="utf-8",
+      errors="replace"
     )
 
     threading.Thread(
