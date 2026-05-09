@@ -68,12 +68,11 @@ function sync(){
 }
 
 function showError(msg){
-  $("errorText").innerText = msg
-  $("errorBox").classList.remove("hidden")
+  showToast(msg, "error", 4000)
 }
 
 function hideError(){
-  $("errorBox").classList.add("hidden")
+  // no-op (kept for compatibility)
 }
 
 function pushData(arr, value){
@@ -143,18 +142,26 @@ async function loadConfig(){
 
 async function saveConfig(){
 
-  await api("/config/update", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      socks_host: $("socks_host").value,
-      socks_port: $("socks_port").value,
-      socks_user: $("socks_user").value,
-      socks_pass: $("socks_pass").value
+  try {
+
+    await api("/config/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        socks_host: $("socks_host").value,
+        socks_port: $("socks_port").value,
+        socks_user: $("socks_user").value,
+        socks_pass: $("socks_pass").value
+      })
     })
-  })
+
+    showToast("Configuration saved successfully", "success")
+
+  } catch (e) {
+    showToast("Failed to save configuration", "error")
+  }
 }
 
 async function ignoreError(){
@@ -278,6 +285,33 @@ function init(){
       maintainAspectRatio: false
     }
   })
+}
+
+function showToast(message, type = "success", duration = 2500) {
+
+  const container = $("toastContainer")
+
+  const toast = document.createElement("div")
+  toast.className = `toast ${type}`
+
+  toast.innerHTML = `
+    <div style="flex:1">${message}</div>
+    <button onclick="this.parentElement.remove()">✕</button>
+  `
+
+  container.appendChild(toast)
+
+  // trigger animation
+  requestAnimationFrame(() => {
+    toast.classList.add("show")
+  })
+
+  setTimeout(() => {
+    toast.classList.remove("show")
+    toast.classList.add("hide")
+
+    setTimeout(() => toast.remove(), 250)
+  }, duration)
 }
 
 setInterval(async () => {

@@ -133,3 +133,55 @@ input:focus{
     0 0 18px rgba(239,68,68,.28),
     0 0 38px rgba(239,68,68,.12);
 }
+
+.toast {
+  min-width: 260px;
+  max-width: 360px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(20, 20, 30, 0.7);
+  border: 1px solid rgba(255,255,255,.08);
+  backdrop-filter: blur(16px);
+
+  color: white;
+  font-size: 13px;
+
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+
+  transform: translateY(-10px);
+  opacity: 0;
+
+  transition: all .25s ease;
+  pointer-events: auto;
+}
+
+.toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.toast.hide {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+
+.toast.success {
+  border-color: rgba(34,197,94,.35);
+}
+
+.toast.error {
+  border-color: rgba(239,68,68,.35);
+}
+
+.toast button {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.toast button:hover {
+  color: white;
+}
