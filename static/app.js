@@ -5,6 +5,30 @@ let locked = false
 let authToken = null
 let ignoredError = null
 let chart
+let previousStats = {}
+let lastMeaningfulUpdate = Date.now()
+
+function isMeaningfulChange(newStats, oldStats = {}) {
+
+  const keys = ["upload_kb", "download_kb", "session_used", "today_used", "active"]
+
+  return keys.some(k =>
+    (newStats[k] ?? 0) !== (oldStats[k] ?? 0)
+  )
+}
+
+function formatDelta(delta) {
+
+  if (!delta || delta <= 0) return ""
+
+  if (delta > 1024 * 1024)
+    return ` (+${(delta / 1024 / 1024).toFixed(2)} GB)`
+
+  if (delta > 1024)
+    return ` (+${(delta / 1024).toFixed(2)} MB)`
+
+  return ` (+${delta.toFixed(2)} KB)`
+}
 
 const data = {
   labels: [],
@@ -214,13 +238,42 @@ async function update(){
 
   const st = s.stats || {}
 
-  $("active").innerText = st.active ?? "-"
-  $("sessions").innerText = st.sessions ?? "-"
-  $("upload").innerText = fmt(st.upload_kb || 0)
-  $("download").innerText = fmt(st.download_kb || 0)
+  const currentStats = {
+    upload_kb: st.upload_kb || 0,
+    download_kb: st.download_kb || 0,
+    session_used: st.session_used || 0,
+    today_used: st.today_used || 0,
+    active: st.active || 0
+  }
 
-  $("today").innerText =
-    `${st.today_used || 0} / ~${st.quota_total || 0}`
+  // detect meaningful update
+  if (isMeaningfulChange(currentStats, previousStats)) {
+    lastMeaningfulUpdate = Date.now()
+  }
+
+  // compute deltas
+  const uploadDelta = currentStats.upload_kb - (previousStats.upload_kb || 0)
+  const downloadDelta = currentStats.download_kb - (previousStats.download_kb || 0)
+  const sessionDelta = currentStats.session_used - (previousStats.session_used || 0)
+  const todayDelta = currentStats.today_used - (previousStats.today_used || 0)
+
+  previousStats = currentStats
+
+  $("upload").innerHTML =
+  `${fmt(currentStats.upload_kb)}<span class="text-gray-400 text-xs">${formatDelta(uploadDelta)}</span>`
+
+  $("download").innerHTML =
+    `${fmt(currentStats.download_kb)}<span class="text-gray-400 text-xs">${formatDelta(downloadDelta)}</span>`
+
+  $("session").innerHTML =
+    `${currentStats.session_used} / ~${st.quota_total || 0}
+    <span class="text-gray-400 text-xs">${formatDelta(sessionDelta)}</span>`
+
+  $("today").innerHTML =
+    `${currentStats.today_used} / ~${st.quota_total || 0}
+    <span class="text-gray-400 text-xs">${formatDelta(todayDelta)}</span>`
+
+  $("active").innerText = st.active ?? "-"
 
   $("session").innerText =
     `${st.session_used || 0} / ~${st.quota_total || 0}`
@@ -359,6 +412,22 @@ setInterval(async () => {
   }catch{}
 
 }, 3000)
+
+setInterval(() => {
+
+  const el = $("lastUpdateAgo")
+  if (!el) return
+
+  const secs = Math.floor((Date.now() - lastMeaningfulUpdate) / 1000)
+
+  if (secs < 10)
+    el.innerText = " (just now)"
+  else if (secs < 60)
+    el.innerText = ` (${secs}s ago)`
+  else
+    el.innerText = ` (${Math.floor(secs / 60)}m ago)`
+
+}, 1000)
 
 init()
 
