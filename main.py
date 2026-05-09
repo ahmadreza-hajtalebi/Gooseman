@@ -655,8 +655,6 @@ if(graphChanged){
   chart.update()
 }
 
-  chart.update()
-
   const l = await (await api("/logs")).json()
 
   $("logs").innerHTML = l.logs.map(x => `
