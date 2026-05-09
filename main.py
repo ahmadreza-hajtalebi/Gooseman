@@ -989,16 +989,38 @@ async def update_config(request: Request):
 
     data = await request.json()
 
-    cfg = {
-        "socks_host": data.get("socks_host", "127.0.0.1"),
-        "socks_port": int(data.get("socks_port", 1080)),
-        "socks_user": data.get("socks_user", ""),
-        "socks_pass": data.get("socks_pass", "")
-    }
+    # Load existing full config
+    cfg = load_config()
 
+    # Update only the SOCKS5-related values
+    cfg["socks_host"] = data.get(
+        "socks_host",
+        cfg.get("socks_host", "127.0.0.1")
+    )
+
+    cfg["socks_port"] = int(
+        data.get(
+            "socks_port",
+            cfg.get("socks_port", 1080)
+        )
+    )
+
+    cfg["socks_user"] = data.get(
+        "socks_user",
+        cfg.get("socks_user", "")
+    )
+
+    cfg["socks_pass"] = data.get(
+        "socks_pass",
+        cfg.get("socks_pass", "")
+    )
+
+    # Save merged config
     save_config(cfg)
 
-    return {"status": "saved"}
+    return {
+        "status": "saved"
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
