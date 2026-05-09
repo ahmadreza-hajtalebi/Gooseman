@@ -294,19 +294,54 @@ function showToast(message, type = "success", duration = 2500) {
   const toast = document.createElement("div")
   toast.className = `toast ${type}`
 
-  toast.innerHTML = `
-    <div style="flex:1">${message}</div>
-    <button onclick="this.parentElement.remove()">✕</button>
-  `
+  // store raw error if needed
+  toast.dataset.error = message
+
+  const closeBtn = document.createElement("button")
+  closeBtn.innerText = "✕"
+
+  closeBtn.onclick = async () => {
+
+    // blacklist ONLY error toasts
+    if (type === "error" && toast.dataset.error) {
+
+      try {
+        await api("/ignore-error", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            error: toast.dataset.error
+          })
+        })
+      } catch (e) {
+        console.warn("Failed to blacklist error:", e)
+      }
+    }
+
+    toast.classList.remove("show")
+    toast.classList.add("hide")
+
+    setTimeout(() => toast.remove(), 250)
+  }
+
+  const text = document.createElement("div")
+  text.style.flex = "1"
+  text.innerText = message
+
+  toast.appendChild(text)
+  toast.appendChild(closeBtn)
 
   container.appendChild(toast)
 
-  // trigger animation
   requestAnimationFrame(() => {
     toast.classList.add("show")
   })
 
   setTimeout(() => {
+    if (!toast.isConnected) return
+
     toast.classList.remove("show")
     toast.classList.add("hide")
 
