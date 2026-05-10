@@ -1,5 +1,4 @@
 .venv
 client_config.json
 __pycache__
-goose-client
-goose-client.exe
+goose-client*
