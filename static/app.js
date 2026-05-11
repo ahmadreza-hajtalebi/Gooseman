@@ -280,7 +280,7 @@ async function update() {
     </div>
   `).join("")
 
-  $("versionText").innerText = `Gooseman v${s.version}`
+  $("versionText").innerText = `Gooseman ${s.version}`
 }
 
 async function updateCheck() {
@@ -296,9 +296,9 @@ async function updateCheck() {
 
     if (d.update_available) {
       $("updateBtn").classList.remove("hidden")
-      $("updateBtn").innerText = `Update → v${d.latest_version}`
+      $("updateBtn").innerText = `Update → ${d.latest_version}`
 
-      showToast(`Update available: v${d.latest_version}`, "success")
+      showToast(`Update available: ${d.latest_version}`, "success")
     } else {
       showToast("Gooseman is already up to date", "success")
     }

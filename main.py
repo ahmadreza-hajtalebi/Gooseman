@@ -150,7 +150,7 @@ def check_for_updates():
 
         data = r.json()
 
-        latest = data.get("tag_name", "").lstrip("v")
+        latest = data.get("tag_name", "")
 
         return {
             "ok": True,
