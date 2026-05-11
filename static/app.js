@@ -368,6 +368,58 @@ if(s.update_available){
 }
 }
 
+async function manualUpdateCheck(){
+
+  const btn = $("checkUpdateBtn")
+
+  btn.disabled = true
+
+  const original = btn.innerText
+
+  btn.innerText = "Checking..."
+
+  try {
+
+    const r = await api("/check-updates", {
+      method: "POST"
+    })
+
+    const d = await r.json()
+
+    if(d.update_available){
+
+      $("updateBtn").classList.remove("hidden")
+
+      $("updateBtn").innerText =
+        `⬆ Update ${d.latest_version}`
+
+      showToast(
+        `Update available: ${d.latest_version}`,
+        "success"
+      )
+
+    } else {
+
+      showToast(
+        "Gooseman is already up to date",
+        "success"
+      )
+    }
+
+  } catch(e){
+
+    showToast(
+      "Failed to check for updates",
+      "error"
+    )
+
+  } finally {
+
+    btn.disabled = false
+    btn.innerText = original
+  }
+}
+
 function init(){
 
   chart = new Chart($("chart"), {

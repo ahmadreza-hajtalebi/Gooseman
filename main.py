@@ -411,6 +411,21 @@ async def update_config(request: Request):
         "status": "saved"
     }
 
+@app.post("/check-updates")
+def manual_check_updates(request: Request):
+
+    if not require_auth(request):
+        return unauthorized()
+
+    check_for_updates()
+
+    return {
+        "ok": True,
+        "update_available": update_available,
+        "latest_version": latest_version,
+        "current_version": APP_VERSION
+    }
+
 @app.post("/update")
 def update_dashboard(request: Request):
 
