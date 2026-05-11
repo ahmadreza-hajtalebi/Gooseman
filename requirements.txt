@@ -1,1 +1,3 @@
-fastapi uvicorn
+fastapi
+uvicorn[standard]
+requests

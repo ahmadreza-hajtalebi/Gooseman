@@ -215,6 +215,43 @@ async function restart(){
   hideError()
 }
 
+async function performUpdate(){
+
+  const btn = $("updateBtn")
+
+  btn.disabled = true
+  btn.innerText = "Updating..."
+
+  try {
+
+    const r = await api("/update", {
+      method: "POST"
+    })
+
+    const d = await r.json()
+
+    if(!d.ok)
+      throw new Error(d.error || "Update failed")
+
+    showToast(
+      "Dashboard updated successfully. Restart Gooseman.",
+      "success",
+      5000
+    )
+
+  } catch(e){
+
+    showToast(
+      "Failed to update dashboard",
+      "error"
+    )
+
+  } finally {
+
+    btn.disabled = false
+  }
+}
+
 async function update(){
 
   const s = await (await api("/status")).json()
@@ -314,6 +351,21 @@ if(graphChanged){
       ${x}
     </div>
   `).join("")
+
+  $("versionText").innerText =
+  `Gooseman v${s.version}`
+
+if(s.update_available){
+
+  $("updateBtn").classList.remove("hidden")
+
+  $("updateBtn").innerText =
+    `Update → v${s.latest_version}`
+
+}else{
+
+  $("updateBtn").classList.add("hidden")
+}
 }
 
 function init(){

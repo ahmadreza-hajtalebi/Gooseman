@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+import requests
 import json
 import os
 import re
@@ -11,6 +12,9 @@ import threading
 import sys
 
 app = FastAPI()
+
+APP_VERSION = "1.0.0"
+REPO_API = "https://api.github.com/repos/Aydiniyom/Gooseman/releases/latest"
 
 # =========================
 # STATIC
@@ -47,6 +51,9 @@ BINARY_PATH = get_binary_path()
 # =========================
 # STATE
 # =========================
+
+update_available = False
+latest_version = APP_VERSION
 
 process = None
 
@@ -215,6 +222,31 @@ def reader():
                 "quota_total": len(acc) * QUOTA_PER_ACCOUNT
             })
 
+def check_for_updates():
+
+    global update_available
+    global latest_version
+
+    try:
+
+        r = requests.get(REPO_API, timeout=5)
+
+        if r.status_code != 200:
+            return
+
+        data = r.json()
+
+        latest = data.get("tag_name", "").replace("v", "")
+
+        latest_version = latest
+
+        update_available = latest != APP_VERSION
+
+    except:
+        pass
+
+check_for_updates()
+
 # =========================
 # ROUTES
 # =========================
@@ -313,7 +345,11 @@ def status(request: Request):
         "running": process and process.poll() is None,
         "stats": latest_stats,
         "startup_error": startup_error,
-        "runtime_error": runtime_error
+        "runtime_error": runtime_error,
+
+        "version": APP_VERSION,
+        "latest_version": latest_version,
+        "update_available": update_available
     }
 
 
@@ -375,6 +411,29 @@ async def update_config(request: Request):
         "status": "saved"
     }
 
+@app.post("/update")
+def update_dashboard(request: Request):
+
+    if not require_auth(request):
+        return unauthorized()
+
+    try:
+
+        subprocess.check_call(
+            ["git", "pull"],
+            cwd=BASE_DIR
+        )
+
+        return {
+            "ok": True
+        }
+
+    except Exception as e:
+
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 
 @app.get("/")
 def dashboard():
