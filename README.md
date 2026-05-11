@@ -4,12 +4,13 @@ Gooseman is a lightweight web dashboard for managing and monitoring a running Go
 
 It provides a simple control panel for starting and stopping the client, viewing real-time logs, tracking usage statistics, and editing SOCKS proxy configuration through a browser interface.
 
-<img width="1080" height="4263" alt="Gooseman Screenshot from Chrome Android" src="https://github.com/user-attachments/assets/9f875599-d91e-43ce-abc5-35c4835d4f6a" />
+<img width="919" height="1049" alt="Gooseman dashboard with tailwindcss and jsdelivr chart loaded" src="https://github.com/user-attachments/assets/a02ad391-07a6-41fe-83a8-4aab7d62f9f8" />
 
 ---
 
 ## Features
 
+- A beautiful and aesthetic, pleasing-to-look-at dashboard.
 - Supports both Windows and Linux binaries
 - Start and stop the GooseRelayVPN client from a web UI
 - Live log viewer with automatic updates
@@ -19,6 +20,8 @@ It provides a simple control panel for starting and stopping the client, viewing
 - SOCKS5 configuration editor (host, port, optional username/password)
 - Responsive design for desktop and mobile devices
 - Lightweight FastAPI backend with no external dependencies beyond Python packages
+and
+- Extremely easy to install and setup
 
 ---
 
@@ -50,7 +53,7 @@ Gooseman consists of two main parts:
 - Python 3.9+
 - FastAPI
 - Uvicorn
-- GooseRelayVPN 1.6 linux binary (`goose-client`) placed in the same directory
+- GooseRelayVPN 1.6 binary (`goose-client(.exe)`) placed in the same directory
 - `client_config.json` file in the project root
 
 ---
@@ -70,7 +73,7 @@ cd Gooseman
 pip install -r requirements.txt
 ```
 
-3. Move your `client_config.json` and `goose-client` files inside the project folder, in the root directory.
+3. Move your `client_config.json` and `goose-client(.exe)` files inside the project folder, in the root directory.
 
 ---
 
