@@ -175,6 +175,7 @@ async function restart() {
 
 async function performUpdate() {
   const btn = $("updateBtn")
+  let prevButtonText = btn.innerText
 
   btn.disabled = true
   btn.innerText = "Updating..."
@@ -183,15 +184,20 @@ async function performUpdate() {
     const r = await api("/update", { method: "POST" })
     const d = await r.json()
 
-    if (!d.ok)
-      throw new Error(d.error || "Update failed")
+    if (!d.ok) {
+      showToast(`Failed to update dashboard, error: ${d.error}`, "error", 5000)
+      btn.innerText = prevButtonText
+      btn.disabled = false
+      return
+    }
 
     showToast("Dashboard updated successfully. Restart Gooseman.", "success", 5000)
+    btn.innerText = "Done!"
 
   } catch (e) {
-    showToast("Failed to update dashboard", "error")
-  } finally {
+    btn.innerText = prevButtonText
     btn.disabled = false
+    showToast("Failed to update dashboard", "error")
   }
 }
 

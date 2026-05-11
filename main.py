@@ -12,8 +12,8 @@ import sys
 
 app = FastAPI()
 
-APP_VERSION = "1.0.0"
-REPO_URL = "http://localhost:5000/dev/latest-release"
+APP_VERSION = "beta"
+REPO_URL = "https://api.github.com/repos/Aydiniyom/Gooseman/releases/latest"
 
 # =========================
 # STATIC
@@ -332,13 +332,6 @@ def manual_check_updates(request: Request):
         return unauthorized()
 
     return check_for_updates()
-
-@app.get("/dev/latest-release")
-def dev_latest_release():
-
-    return {
-        "tag_name": "v0.1.0-beta.5"
-    }
 
 @app.get("/")
 def dashboard():
