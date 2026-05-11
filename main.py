@@ -162,6 +162,20 @@ def check_for_updates():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+def get_app_version():
+
+    try:
+        return subprocess.check_output(
+            ["git", "describe", "--tags", "--always"],
+            cwd=BASE_DIR
+        ).decode().strip()
+
+    except:
+        return "beta"
+
+APP_VERSION = get_app_version()
+
 # =========================
 # PROCESS READER
 # =========================
@@ -207,6 +221,8 @@ async def login(request: Request):
 
     token = os.urandom(32).hex()
     authorized_tokens.add(token)
+
+    get_app_version()
 
     return {"ok": True, "token": token}
 
