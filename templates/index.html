@@ -74,9 +74,21 @@
 
   <div class="flex justify-between items-center mb-4 gap-3">
 
-    <h1 class="text-2xl font-bold">
-      🦢 Gooseman
-    </h1>
+    <div class="flex items-center gap-2">
+
+      <h1 class="text-2xl font-bold">
+        🦢 Gooseman
+      </h1>
+
+      <button
+        onclick="lockDashboard()"
+        class="glass px-3 py-1.5 rounded-xl text-sm text-gray-300 hover:text-white transition"
+        title="Lock dashboard"
+      >
+        🔒
+      </button>
+
+    </div>
 
     <div
       id="status"

@@ -88,6 +88,17 @@ function toggleSessionMode() {
   update()
 }
 
+function lockDashboard() {
+
+  authToken = null
+
+  $("loginPassword").value = ""
+
+  $("loginOverlay").style.display = "flex"
+
+  showToast("Dashboard locked", "success")
+}
+
 function sync() {
   const b = $("toggleBtn")
 
