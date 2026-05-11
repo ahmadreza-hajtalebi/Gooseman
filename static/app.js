@@ -77,6 +77,14 @@ function sync() {
 }
 
 function showError(msg) {
+  ignoredError = msg
+  
+  api("/ignore-error", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ error: msg })
+  }).catch(() => {})
+  
   showToast(msg, "error", 4000)
 }
 
