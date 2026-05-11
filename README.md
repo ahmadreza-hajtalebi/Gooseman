@@ -1,3 +1,5 @@
+[توضیحات فارسی](https://github.com/Aydiniyom/Gooseman/blob/main/README-fa.md)
+
 # 🦢 Gooseman
 
 Gooseman is a lightweight web dashboard for managing and monitoring a running GooseRelayVPN client on a local machine or LAN server.
@@ -20,7 +22,6 @@ It provides a simple control panel for starting and stopping the client, viewing
 - SOCKS5 configuration editor (host, port, optional username/password)
 - Responsive design for desktop and mobile devices
 - Lightweight FastAPI backend with no external dependencies beyond Python packages
-and
 - Extremely easy to install and setup
 
 ---
@@ -102,3 +103,5 @@ Deprecated: ~~Simply `cd` into the project directory and run `git pull`, and rer
 ## Thank you...
 
 [@Kianmhz](https://github.com/Kianmhz) for making the wonderful project [GooseRelayVPN](https://github.com/Kianmhz/GooseRelayVPN/tree/main).
+
+Everyone who decided to star the project. It means the world to me.
