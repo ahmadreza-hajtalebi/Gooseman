@@ -127,7 +127,19 @@
     </div>
 
     <div class="glass p-3 rounded-2xl col-span-2">
-      <div class="text-xs text-gray-400">Session Quota</div>
+      <div class="flex items-center justify-between">
+      <div class="text-xs text-gray-400">
+        Session Quota
+      </div>
+
+      <button
+        onclick="toggleSessionMode()"
+        class="text-[10px] px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 transition"
+        id="sessionModeBtn"
+      >
+        %
+      </button>
+    </div>
       <div id="session" class="text-lg">0 / ~0</div>
     </div>
 

@@ -12,6 +12,7 @@ let persistentDeltas = {
   today: 0,
   session: 0
 }
+let sessionPercentageMode = false
 let lastMeaningfulUpdate = Date.now()
 
 function isMeaningfulChange(newStats, oldStats = {}) {
@@ -70,6 +71,21 @@ const fmt = v => {
   if (v > 1024 * 1024) return (v / 1024 / 1024).toFixed(2) + " GB"
   if (v > 1024) return (v / 1024).toFixed(2) + " MB"
   return v.toFixed(2) + " KB"
+}
+
+function formatPercentage(value, total) {
+  if (!total || total <= 0) return "0%"
+  return ((value / total) * 100).toFixed(2) + "%"
+}
+
+function toggleSessionMode() {
+
+  sessionPercentageMode = !sessionPercentageMode
+
+  $("sessionModeBtn").innerText =
+    sessionPercentageMode ? "123" : "%"
+
+  update()
 }
 
 function sync() {
@@ -288,11 +304,32 @@ async function update() {
       ${formatDelta(persistentDeltas.today, false)}
     </span>`
   
-  $("session").innerHTML =
-    `${st.session_used || 0} / ~${st.quota_total || 0}
-    <span class="text-gray-400 text-xs">
-      ${formatDelta(persistentDeltas.session, false)}
-    </span>`
+  const quotaTotal = st.quota_total || 0
+
+  if (sessionPercentageMode) {
+
+    const currentPercent =
+      formatPercentage(st.session_used || 0, quotaTotal)
+
+    const deltaPercent =
+      quotaTotal > 0
+        ? ((persistentDeltas.session / quotaTotal) * 100).toFixed(2)
+        : 0
+
+    $("session").innerHTML =
+      `${currentPercent}
+      <span class="text-gray-400 text-xs">
+        (+${deltaPercent}%)
+      </span>`
+
+  } else {
+
+    $("session").innerHTML =
+      `${st.session_used || 0} / ~${quotaTotal}
+      <span class="text-gray-400 text-xs">
+        ${formatDelta(persistentDeltas.session, false)}
+      </span>`
+  }
   
   $("active").innerText = st.active ?? 0
   $("sessions").innerText = currentStats.sessions
