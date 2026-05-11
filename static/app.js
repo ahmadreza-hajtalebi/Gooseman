@@ -6,6 +6,12 @@ let authToken = null
 let ignoredError = null
 let chart
 let previousStats = {}
+let persistentDeltas = {
+  upload: 0,
+  download: 0,
+  today: 0,
+  session: 0
+}
 let lastMeaningfulUpdate = Date.now()
 
 function isMeaningfulChange(newStats, oldStats = {}) {
@@ -13,16 +19,20 @@ function isMeaningfulChange(newStats, oldStats = {}) {
   return keys.some(k => (newStats[k] ?? 0) !== (oldStats[k] ?? 0))
 }
 
-function formatDelta(delta) {
+function formatDelta(delta, isBytes=true) {
   if (!delta || delta <= 0) return ""
 
-  if (delta > 1024 * 1024)
-    return ` (+${(delta / 1024 / 1024).toFixed(2)} GB)`
+  if (isBytes) {
+    if (delta > 1024 * 1024)
+      return ` (+${(delta / 1024 / 1024).toFixed(2)} GB)`
 
-  if (delta > 1024)
-    return ` (+${(delta / 1024).toFixed(2)} MB)`
+    if (delta > 1024)
+      return ` (+${(delta / 1024).toFixed(2)} MB)`
 
-  return ` (+${delta.toFixed(2)} KB)`
+    return ` (+${delta.toFixed(2)} KB)`
+  } else {
+    return ` (+${delta})`
+  }
 }
 
 const data = {
@@ -240,26 +250,49 @@ async function update() {
     lastMeaningfulUpdate = Date.now()
   }
 
-  const uploadDelta = currentStats.upload_kb - (previousStats.upload_kb || 0)
-  const downloadDelta = currentStats.download_kb - (previousStats.download_kb || 0)
-  const todayDelta = currentStats.today_used - (previousStats.today_used || 0)
-  const sessionDelta = currentStats.session_used - (previousStats.session_used || 0)
+  const uploadDelta =
+  currentStats.upload_kb - (previousStats.upload_kb || 0)
+
+  const downloadDelta =
+    currentStats.download_kb - (previousStats.download_kb || 0)
+
+  const todayDelta =
+    currentStats.today_used - (previousStats.today_used || 0)
+
+  const sessionDelta =
+    currentStats.session_used - (previousStats.session_used || 0)
+
+  if (uploadDelta > 0)
+    persistentDeltas.upload = uploadDelta
+
+  if (downloadDelta > 0)
+    persistentDeltas.download = downloadDelta
+
+  if (todayDelta > 0)
+    persistentDeltas.today = todayDelta
+
+  if (sessionDelta > 0)
+    persistentDeltas.session = sessionDelta
 
   previousStats = currentStats
 
   $("upload").innerHTML =
-    `${fmt(currentStats.upload_kb)}<span class="text-gray-400 text-xs">${formatDelta(uploadDelta)}</span>`
+    `${fmt(currentStats.upload_kb)}<span class="text-gray-400 text-xs">${formatDelta(persistentDeltas.upload)}</span>`
 
   $("download").innerHTML =
-    `${fmt(currentStats.download_kb)}<span class="text-gray-400 text-xs">${formatDelta(downloadDelta)}</span>`
+    `${fmt(currentStats.download_kb)}<span class="text-gray-400 text-xs">${formatDelta(persistentDeltas.download)}</span>`
 
   $("today").innerHTML =
     `${currentStats.today_used} / ~${st.quota_total || 0}
-     <span class="text-gray-400 text-xs">${todayDelta}</span>`
+    <span class="text-gray-400 text-xs">
+      ${formatDelta(persistentDeltas.today, false)}
+    </span>`
   
   $("session").innerHTML =
     `${st.session_used || 0} / ~${st.quota_total || 0}
-     <span class="text-gray-400 text-xs">${sessionDelta}</span>`
+    <span class="text-gray-400 text-xs">
+      ${formatDelta(persistentDeltas.session, false)}
+    </span>`
   
   $("active").innerText = st.active ?? 0
   $("sessions").innerText = currentStats.sessions
