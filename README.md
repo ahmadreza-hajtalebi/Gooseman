@@ -90,7 +90,9 @@ Then you can access it via the host machine by visiting the URL `http://localhos
 
 ## Updating
 
-Simply `cd` into the project directory and run `git pull`, and rerun the `uvicorn` command.
+There has been a built-in update mechanism added to the dashboard itself.
+
+Deprecated: ~~Simply `cd` into the project directory and run `git pull`, and rerun the `uvicorn` command.~~
 
 ---
 
