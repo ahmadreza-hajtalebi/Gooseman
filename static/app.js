@@ -232,6 +232,7 @@ async function update() {
     download_kb: st.download_kb || 0,
     sessions: st.sessions || "0/0",
     today_used: st.today_used || 0,
+    session_used: st.session_used || 0,
     active: st.active || 0
   }
 
@@ -242,6 +243,7 @@ async function update() {
   const uploadDelta = currentStats.upload_kb - (previousStats.upload_kb || 0)
   const downloadDelta = currentStats.download_kb - (previousStats.download_kb || 0)
   const todayDelta = currentStats.today_used - (previousStats.today_used || 0)
+  const sessionDelta = currentStats.session_used - (previousStats.session_used || 0)
 
   previousStats = currentStats
 
@@ -254,9 +256,14 @@ async function update() {
   $("today").innerHTML =
     `${currentStats.today_used} / ~${st.quota_total || 0}
      <span class="text-gray-400 text-xs">${todayDelta}</span>`
-
+  
+  $("session").innerHTML =
+    `${st.session_used || 0} / ~${st.quota_total || 0}
+     <span class="text-gray-400 text-xs">${sessionDelta}</span>`
+  
   $("active").innerText = st.active ?? 0
   $("sessions").innerText = currentStats.sessions
+
 
   const upload = st.upload_kb || 0
   const download = st.download_kb || 0
