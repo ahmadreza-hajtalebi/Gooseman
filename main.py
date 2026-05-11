@@ -169,7 +169,7 @@ def get_app_version():
         return subprocess.check_output(
             ["git", "describe", "--tags", "--always"],
             cwd=BASE_DIR
-        ).decode().strip()
+        ).decode().strip().split("-")[0]
 
     except:
         return "beta"
