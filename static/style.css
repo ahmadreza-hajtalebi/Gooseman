@@ -185,3 +185,15 @@ input:focus{
 .toast button:hover {
   color: white;
 }
+
+#updateBtn{
+  transition:
+    transform .2s ease,
+    opacity .2s ease,
+    box-shadow .2s ease;
+}
+
+#updateBtn:hover{
+  box-shadow:
+    0 0 18px rgba(59,130,246,.25);
+}
