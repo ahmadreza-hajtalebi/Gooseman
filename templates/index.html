@@ -190,26 +190,35 @@
   >
     <div id="logs"></div>
   </div>
-
-</div>
-
+  
   <!-- UPDATE -->
 
-<div class="mt-6 pb-4 flex items-center justify-between text-xs text-gray-500">
+  <div
+  class="glass mt-4 px-4 py-3 rounded-2xl flex items-center justify-between text-sm text-gray-400"
+>
 
-  <div id="versionText">
-    Gooseman v1.0.0
+  <div class="flex items-center gap-2">
+
+    <div class="w-2 h-2 rounded-full bg-white/30"></div>
+
+    <span id="versionText" class="tracking-wide">
+      Gooseman v0.1.0-beta.1
+    </span>
+
   </div>
 
   <button
     id="updateBtn"
     onclick="performUpdate()"
-    class="hidden btn bg-blue-600 px-3 py-1.5 rounded-xl text-white"
+    class="hidden btn bg-blue-600/90 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl text-xs font-medium"
   >
-    Update
+    ⬆ Update Available
   </button>
 
 </div>
+
+</div>
+
 
 <script src="/static/app.js"></script>
 
