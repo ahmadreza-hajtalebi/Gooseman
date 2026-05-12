@@ -177,6 +177,14 @@ def get_app_version():
 
 APP_VERSION = get_app_version()
 
+def safe_int(value, default=0):
+    try:
+        if value is None or value == "":
+            return default
+        return int(value)
+    except:
+        return default
+
 # =========================
 # PROCESS READER
 # =========================
@@ -340,8 +348,10 @@ async def update_config(request: Request):
     cfg["socks_port"] = int(data.get("socks_port", cfg["socks_port"]))
     cfg["socks_user"] = data.get("socks_user", cfg["socks_user"])
     cfg["socks_pass"] = data.get("socks_pass", cfg["socks_pass"])
-    cfg["quota_limit"] = int(data.get("quota_limit", cfg.get("quota_limit", 0)))
-
+    cfg["quota_limit"] = safe_int(
+        data.get("quota_limit", cfg.get("quota_limit", 0))
+    )
+    
     save_config(cfg)
 
     return {"status": "saved"}
