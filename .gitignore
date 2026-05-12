@@ -1,4 +1,14 @@
-.venv
+# Environments
+.venv/
+__pycache__/
+
+# Core & Configs (Security)
+goose-client
+goose-client.exe
 client_config.json
-__pycache__
-goose-client*
+.gooseman_secret
+
+# Build files (PyInstaller/Nuitka)
+build/
+dist/
+*.spec

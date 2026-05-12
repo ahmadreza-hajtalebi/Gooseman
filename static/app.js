@@ -1,497 +1,540 @@
-const $ = id => document.getElementById(id)
+const $ = id => document.getElementById(id);
 
-let running = false
-let locked = false
-let authToken = null
-let ignoredError = null
-let chart
-let previousStats = {}
-let persistentDeltas = {
-  upload: 0,
-  download: 0,
-  today: 0,
-  session: 0
-}
-let sessionPercentageMode = false
-let lastMeaningfulUpdate = Date.now()
-let latestVersion = null
+let running = false;
+let authToken = localStorage.getItem('goose_token');
+let chart;
+let currentConfig = {};
+let selectedAccount = null;
 
-function isMeaningfulChange(newStats, oldStats = {}) {
-  const keys = ["upload_kb", "download_kb", "session_used", "today_used", "active"]
-  return keys.some(k => (newStats[k] ?? 0) !== (oldStats[k] ?? 0))
-}
+const ENDPOINTS = {
+    login: '/auth/login',
+    status: '/client/status',
+    start: '/client/start',
+    stop: '/client/stop',
+    config: '/config',
+    update: '/config/update',
+    logs: '/logs'
+};
 
-function formatDelta(delta, isBytes=true) {
-  if (!delta || delta <= 0) return ""
-
-  if (isBytes) {
-    if (delta > 1024 * 1024)
-      return ` (+${(delta / 1024 / 1024).toFixed(2)} GB)`
-
-    if (delta > 1024)
-      return ` (+${(delta / 1024).toFixed(2)} MB)`
-
-    return ` (+${delta.toFixed(2)} KB)`
-  } else {
-    return ` (+${delta})`
-  }
-}
-
-const data = {
-  labels: [],
-  u: [],
-  d: [],
-  s: [],
-  t: []
-}
-
-let lastGraphValues = {
-  upload: null,
-  download: null,
-  session: null,
-  today: null
-}
-
-const api = async (url, options = {}) => {
-  options.headers = {
-    ...(options.headers || {}),
-    Authorization: authToken || ""
-  }
-
-  const r = await fetch(url, options)
-
-  if (r.status === 401) {
-    $("loginOverlay").style.display = "flex"
-    throw new Error("Unauthorized")
-  }
-
-  return r
-}
-
-const fmt = v => {
-  if (v > 1024 * 1024) return (v / 1024 / 1024).toFixed(2) + " GB"
-  if (v > 1024) return (v / 1024).toFixed(2) + " MB"
-  return v.toFixed(2) + " KB"
-}
-
-function formatPercentage(value, total) {
-  if (!total || total <= 0) return "0%"
-  return ((value / total) * 100).toFixed(2) + "%"
-}
-
-function toggleSessionMode() {
-
-  sessionPercentageMode = !sessionPercentageMode
-
-  $("sessionModeBtn").innerText =
-    sessionPercentageMode ? "123" : "%"
-
-  update()
-}
-
-function lockDashboard() {
-
-  authToken = null
-
-  $("loginPassword").value = ""
-
-  $("loginOverlay").style.display = "flex"
-
-  showToast("Dashboard locked", "success")
-}
-
-function sync() {
-  const b = $("toggleBtn")
-
-  $("status").style.animation = running ? "pulse 2s infinite" : "none"
-
-  b.innerText = running ? "Stop Goose" : "Start Goose"
-
-  b.classList.toggle("bg-green-600", !running)
-  b.classList.toggle("bg-red-600", running)
-
-  b.classList.toggle("btn-glow-green", !running)
-  b.classList.toggle("btn-glow-red", running)
-}
-
-function showError(msg) {
-  ignoredError = msg
-  
-  api("/ignore-error", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ error: msg })
-  }).catch(() => {})
-  
-  showToast(msg, "error", 4000)
-}
-
-function hideError() {}
-
-function pushData(arr, value) {
-  arr.push(value)
-  if (arr.length > 25) arr.shift()
+// ==========================================
+// 1. API & AUTH
+// ==========================================
+async function api(url, options = {}) {
+    options.headers = {
+        ...(options.headers || {}),
+        'Content-Type': 'application/json',
+        'Authorization': authToken || ""
+    };
+    try {
+        const r = await fetch(url, options);
+        if (r.status === 401) {
+            $("loginOverlay").style.display = "flex";
+            return null;
+        }
+        return await r.json();
+    } catch (e) {
+        console.error("API Error:", e);
+        return null;
+    }
 }
 
 async function login() {
-  const r = await fetch("/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      password: $("loginPassword").value
-    })
-  })
-
-  const d = await r.json()
-
-  if (!d.ok)
-    return $("loginError").classList.remove("hidden")
-
-  authToken = d.token
-  $("loginOverlay").style.display = "none"
-
-  await loadConfig()
-  await update()
-  await updateCheck()
-}
-
-async function toggle(force = false) {
-  if (locked) return
-
-  if (running && !force) {
-    $("stopOverlay").classList.remove("hidden")
-    $("stopOverlay").classList.add("flex")
-    return
-  }
-
-  locked = true
-  $("toggleBtn").disabled = true
-  $("logs").innerHTML = ""
-
-  const d = await (await api("/toggle")).json()
-
-  running = d.running
-  sync()
-
-  setTimeout(() => {
-    locked = false
-    $("toggleBtn").disabled = false
-  }, 3000)
-}
-
-function closeStopPrompt() {
-  $("stopOverlay").classList.remove("flex")
-  $("stopOverlay").classList.add("hidden")
-}
-
-async function confirmStop() {
-  closeStopPrompt()
-  await toggle(true)
-}
-
-async function loadConfig() {
-  const c = await (await api("/config")).json()
-
-  for (const k in c) {
-    if ($(k)) $(k).value = c[k]
-  }
-}
-
-async function saveConfig() {
-  try {
-    await api("/config/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        socks_host: $("socks_host").value,
-        socks_port: $("socks_port").value,
-        socks_user: $("socks_user").value,
-        socks_pass: $("socks_pass").value,
-        quota_limit: $("quota_limit").value
-      })
-    })
-
-    showToast("Configuration saved successfully", "success")
-
-  } catch (e) {
-    showToast("Failed to save configuration", "error")
-  }
-}
-
-async function ignoreError() {
-  if (!ignoredError) return
-
-  await api("/ignore-error", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ error: ignoredError })
-  })
-
-  hideError()
-}
-
-async function restart() {
-  await toggle()
-  setTimeout(toggle, 500)
-  hideError()
-}
-
-async function performUpdate() {
-  const btn = $("updateBtn")
-  let prevButtonText = btn.innerText
-
-  btn.disabled = true
-  btn.innerText = "Updating..."
-
-  try {
-    const r = await api("/update", { 
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tag: latestVersion })
-    })
-    const d = await r.json()
-
-    if (!d.ok) {
-      showToast(`Failed to update dashboard, error: ${d.error}`, "error", 5000)
-      btn.innerText = prevButtonText
-      btn.disabled = false
-      return
-    }
-
-    showToast("Dashboard updated successfully, restarting...", "success", 5000)
-    btn.innerText = "Done!"
-
-  } catch (e) {
-    btn.innerText = prevButtonText
-    btn.disabled = false
-    showToast("Failed to update dashboard", "error")
-  }
-}
-
-async function update() {
-  const s = await (await api("/status")).json()
-
-  running = !!s.running
-  sync()
-
-  $("status").innerText = running ? "🟢 Running" : "🔴 Stopped"
-  $("logBox").classList.toggle("log-stopped", !running)
-
-  if (s.startup_error) showError(s.startup_error)
-
-  if (s.runtime_error) {
-    ignoredError = s.runtime_error
-    showError(s.runtime_error)
-  }
-
-  const st = s.stats || {}
-
-  const currentStats = {
-    upload_kb: st.upload_kb || 0,
-    download_kb: st.download_kb || 0,
-    sessions: st.sessions || "0/0",
-    today_used: st.today_used || 0,
-    session_used: st.session_used || 0,
-    active: st.active || 0
-  }
-
-  if (isMeaningfulChange(currentStats, previousStats)) {
-    lastMeaningfulUpdate = Date.now()
-  }
-
-  const uploadDelta =
-  currentStats.upload_kb - (previousStats.upload_kb || 0)
-
-  const downloadDelta =
-    currentStats.download_kb - (previousStats.download_kb || 0)
-
-  const todayDelta =
-    currentStats.today_used - (previousStats.today_used || 0)
-
-  const sessionDelta =
-    currentStats.session_used - (previousStats.session_used || 0)
-
-  if (uploadDelta > 0)
-    persistentDeltas.upload = uploadDelta
-
-  if (downloadDelta > 0)
-    persistentDeltas.download = downloadDelta
-
-  if (todayDelta > 0)
-    persistentDeltas.today = todayDelta
-
-  if (sessionDelta > 0)
-    persistentDeltas.session = sessionDelta
-
-  previousStats = currentStats
-
-  $("upload").innerHTML =
-    `${fmt(currentStats.upload_kb)}<span class="text-gray-400 text-xs">${formatDelta(persistentDeltas.upload)}</span>`
-
-  $("download").innerHTML =
-    `${fmt(currentStats.download_kb)}<span class="text-gray-400 text-xs">${formatDelta(persistentDeltas.download)}</span>`
-
-  $("today").innerHTML =
-    `${currentStats.today_used} / ~${st.quota_total || 0}
-    <span class="text-gray-400 text-xs">
-      ${formatDelta(persistentDeltas.today, false)}
-    </span>`
-  
-  const quotaTotal = st.quota_total || 0
-
-  if (sessionPercentageMode) {
-
-    const currentPercent =
-      formatPercentage(st.session_used || 0, quotaTotal)
-
-    const deltaPercent =
-      quotaTotal > 0
-        ? ((persistentDeltas.session / quotaTotal) * 100).toFixed(2)
-        : 0
-
-    $("session").innerHTML =
-      `${currentPercent}
-      <span class="text-gray-400 text-xs">
-        (+${deltaPercent}%)
-      </span>`
-
-  } else {
-
-    $("session").innerHTML =
-      `${st.session_used || 0} / ~${quotaTotal}
-      <span class="text-gray-400 text-xs">
-        ${formatDelta(persistentDeltas.session, false)}
-      </span>`
-  }
-  
-  $("active").innerText = st.active ?? 0
-  $("sessions").innerText = currentStats.sessions
-
-
-  const upload = st.upload_kb || 0
-  const download = st.download_kb || 0
-  const session = st.session_used || 0
-  const today = st.today_used || 0
-
-  const graphChanged =
-    upload !== lastGraphValues.upload ||
-    download !== lastGraphValues.download ||
-    session !== lastGraphValues.session ||
-    today !== lastGraphValues.today
-
-  if (graphChanged) {
-    lastGraphValues = { upload, download, session, today }
-
-    pushData(data.labels, "")
-    pushData(data.u, upload)
-    pushData(data.d, download)
-    pushData(data.s, session)
-    pushData(data.t, today)
-
-    chart.update()
-  }
-
-  const l = await (await api("/logs")).json()
-  $("logs").innerHTML = l.logs.map(x => `
-    <div class="py-1 border-b border-white/5 break-all">
-      ${x}
-    </div>
-  `).join("")
-
-  $("versionText").innerText = `Gooseman ${s.version}`
-}
-
-async function updateCheck() {
-  const btn = $("checkUpdateBtn")
-
-  btn.disabled = true
-  const original = btn.innerText
-  btn.innerText = "Checking..."
-
-  try {
-    const r = await api("/check-updates", { method: "POST" })
-    const d = await r.json()
-
-    if (d.update_available) {
-      $("updateBtn").classList.remove("hidden")
-      $("updateBtn").innerText = `Update → ${d.latest_version}`
-
-      showToast(`Update available: ${d.latest_version}`, "success")
-      latestVersion = d.latest_version
+    const password = $("loginPassword").value;
+    const r = await fetch(ENDPOINTS.login, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+    });
+    
+    if (r.ok) {
+        const data = await r.json();
+        authToken = data.token;
+        localStorage.setItem("goose_token", authToken);
+        $("loginOverlay").style.display = "none";
+        initApp();
     } else {
-      showToast("Gooseman is already up to date", "success")
+        $("loginError").classList.remove("hidden");
+        $("loginPassword").value = "";
     }
-
-  } catch (e) {
-    showToast("Failed to check for updates", "error")
-  } finally {
-    btn.disabled = false
-    btn.innerText = original
-  }
 }
 
-function init() {
-  chart = new Chart($("chart"), {
-    type: "line",
-    data: {
-      labels: data.labels,
-      datasets: [
-        { label: "Upload KB", data: data.u, borderColor: "#22c55e", tension: .35 },
-        { label: "Download KB", data: data.d, borderColor: "#3b82f6", tension: .35 },
-        { label: "Session Quota", data: data.s, borderColor: "#f59e0b", tension: .35 },
-        { label: "Today's Quota", data: data.t, borderColor: "#ef4444", tension: .35 }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false
-    }
-  })
+// ==========================================
+// 2. UI UTILS & CHART
+// ==========================================
+function toggleVis(id) {
+    const el = $(id);
+    if (el) el.type = el.type === "password" ? "text" : "password";
 }
 
 function showToast(message, type = "success", duration = 2500) {
-  const container = $("toastContainer")
-
-  const toast = document.createElement("div")
-  toast.className = `toast ${type}`
-
-  const closeBtn = document.createElement("button")
-  closeBtn.innerText = "✕"
-
-  closeBtn.onclick = () => toast.remove()
-
-  const text = document.createElement("div")
-  text.style.flex = "1"
-  text.innerText = message
-
-  toast.appendChild(text)
-  toast.appendChild(closeBtn)
-
-  container.appendChild(toast)
-
-  requestAnimationFrame(() => toast.classList.add("show"))
-
-  setTimeout(() => {
-    toast.classList.add("hide")
-    setTimeout(() => toast.remove(), 250)
-  }, duration)
+    let container = $("toastContainer");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "toastContainer";
+        container.className = "fixed bottom-4 right-4 z-[999] flex flex-col gap-2";
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement("div");
+    toast.className = `bg-gray-900 border border-white/10 text-white p-4 rounded-xl shadow-lg flex justify-between items-center min-w-[250px] transition-all duration-300 transform translate-y-10 opacity-0`;
+    if(type === "error") toast.style.borderLeft = "4px solid #ef4444";
+    else toast.style.borderLeft = "4px solid #10b981";
+    
+    toast.innerHTML = `<div style="flex:1">${message}</div><button class="ml-4 text-gray-500 hover:text-white" onclick="this.parentElement.remove()">✕</button>`;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.remove("translate-y-10", "opacity-0"));
+    setTimeout(() => {
+        toast.classList.add("opacity-0");
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
 }
 
-setInterval(async () => {
-  if (!authToken) return
-  try { await update() } catch {}
-}, 3000)
+const chartData = { labels: [], u: [], d: [], s: [], t: [], scr: [] };
 
+function initChart() {
+    const ctx = $("myChart").getContext("2d");
+    chart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: chartData.labels,
+            datasets: [
+                { label: "Upload KB", data: chartData.u, borderColor: "#10b981", tension: 0.35, borderWidth: 2 },
+                { label: "Download KB", data: chartData.d, borderColor: "#3b82f6", tension: 0.35, borderWidth: 2 },
+                { label: "Session Quota", data: chartData.s, borderColor: "#f59e0b", tension: 0.35, borderWidth: 2 },
+                { label: "Today Quota", data: chartData.t, borderColor: "#ef4444", tension: 0.35, borderWidth: 2 },
+                { label: "Script Quota", data: chartData.scr, borderColor: "#c084fc", tension: 0.35, borderWidth: 2 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, grid: { color: "rgba(255,255,255,0.05)" } }, x: { display: false } },
+            plugins: { legend: { labels: { color: "rgba(255,255,255,0.7)" } } }
+        }
+    });
+}
+
+function updateChart(stats) {
+    if (!chart || !stats) return;
+    const now = new Date().toLocaleTimeString();
+    chartData.labels.push(now);
+
+    const parseVal = (str) => {
+        if (!str) return 0;
+        if (str.includes("MB")) return parseFloat(str) * 1024;
+        if (str.includes("GB")) return parseFloat(str) * 1024 * 1024;
+        return parseFloat(str) || 0;
+    };
+
+    chartData.u.push(parseVal(stats.upload_str));
+    chartData.d.push(parseVal(stats.download_str));
+    chartData.s.push(stats.session_used || 0);
+    chartData.t.push(stats.today_used || 0);
+    chartData.scr.push(stats.script_used || 0);
+
+    if (chartData.labels.length > 30) {
+        chartData.labels.shift(); chartData.u.shift(); chartData.d.shift(); 
+        chartData.s.shift(); chartData.t.shift(); chartData.scr.shift();
+    }
+    chart.update('none');
+}
+
+// ==========================================
+// 3. SETTINGS & CONFIG
+// ==========================================
+function handleSettingsClick() {
+    if (running) {
+        showToast("Cannot access settings while the client is running. Please stop it first.", "error", 4000);
+        return;
+    }
+    openSettings();
+}
+
+function openSettings() {
+    $("settingsModal").classList.remove("hidden");
+    loadConfigIntoUI();
+}
+function closeSettings() {
+    $("settingsModal").classList.add("hidden");
+}
+
+async function loadConfigIntoUI() {
+    currentConfig = await api(ENDPOINTS.config);
+    if (!currentConfig) return;
+
+    $("tunnel_key").value = currentConfig.tunnel_key || "";
+    $("socks_host").value = currentConfig.socks_host || "127.0.0.1";
+    $("socks_port").value = currentConfig.socks_port || "1080";
+    $("socks_user").value = currentConfig.socks_user || "";
+    $("socks_pass").value = currentConfig.socks_pass || "";
+    
+    $("google_host").value = currentConfig.google_host || "";
+    $("sni").value = (currentConfig.sni || []).join(", ");
+    $("coalesce").value = currentConfig.coalesce_step_ms || 0;
+    $("idle_slots").value = currentConfig.idle_slots_per_bucket || 1;
+    $("debug_timing").checked = currentConfig.debug_timing || false;
+
+    const hasPass = currentConfig.dashboard_password && currentConfig.dashboard_password.trim() !== "";
+    const chk = $("enableDashboardAuth");
+    if(chk) {
+        chk.checked = hasPass;
+        $("dash_pass_container").classList.toggle("hidden", !hasPass);
+        $("dashboard_pass").value = currentConfig.dashboard_password || "";
+    }
+    if($("quota_limit")) {
+        $("quota_limit").value = currentConfig.quota_limit || "";
+    }
+    
+    // نمایش یا مخفی کردن دکمه قفل در هدر
+    const lockBtn = $("lockBtn");
+    if(lockBtn) {
+        if(hasPass) lockBtn.classList.remove("hidden");
+        else lockBtn.classList.add("hidden");
+    }
+    
+    renderAccountList();
+}
+
+async function saveAllConfig() {
+    // ذخیره با حفظ ترتیب اکانت‌ها
+    if (selectedAccount) {
+        const lines = $("scriptIds").value.split("\n").map(l => l.trim()).filter(l => l);
+        const accountOrder = [...new Set(currentConfig.script_keys.map(k => k.account))];
+        let newScriptKeys = [];
+        for (let a of accountOrder) {
+            if (a === selectedAccount) {
+                newScriptKeys.push(...lines.map(id => ({ id, account: a })));
+            } else {
+                newScriptKeys.push(...currentConfig.script_keys.filter(k => k.account === a));
+            }
+        }
+        currentConfig.script_keys = newScriptKeys;
+    }
+
+    currentConfig.tunnel_key = $("tunnel_key").value;
+    currentConfig.socks_host = $("socks_host").value;
+    currentConfig.socks_port = parseInt($("socks_port").value) || 1080;
+    currentConfig.socks_user = $("socks_user").value;
+    currentConfig.socks_pass = $("socks_pass").value;
+    
+    currentConfig.google_host = $("google_host").value;
+    currentConfig.sni = $("sni").value.split(",").map(s => s.trim()).filter(s => s);
+    currentConfig.coalesce_step_ms = parseInt($("coalesce").value) || 0;
+    currentConfig.idle_slots_per_bucket = parseInt($("idle_slots").value) || 1;
+    currentConfig.debug_timing = $("debug_timing").checked;
+
+    const chk = $("enableDashboardAuth");
+    if(chk && chk.checked) {
+        currentConfig.dashboard_password = $("dashboard_pass").value;
+    } else {
+        currentConfig.dashboard_password = "";
+    }
+    if($("quota_limit")) {
+        currentConfig.quota_limit = parseInt($("quota_limit").value) || 0;
+    }
+
+    // آپدیت آنی دکمه قفل روی صفحه بعد از ذخیره کردن تنظیمات
+    const lockBtn = $("lockBtn");
+    if(lockBtn) {
+        if(currentConfig.dashboard_password) lockBtn.classList.remove("hidden");
+        else lockBtn.classList.add("hidden");
+    }
+
+    const res = await api(ENDPOINTS.update, { method: "POST", body: JSON.stringify(currentConfig) });
+    if (res && res.status === "saved") {
+        showToast("Configuration saved successfully", "success");
+        closeSettings();
+    }
+}
+
+// ==========================================
+// 4. ACCOUNT MANAGER
+// ==========================================
+function renderAccountList() {
+    const list = $("accountList");
+    if(!list) return;
+    list.innerHTML = "";
+    if(!currentConfig.script_keys) currentConfig.script_keys = [];
+    
+    const accounts = [...new Set(currentConfig.script_keys.map(k => k.account))];
+    accounts.forEach(acc => {
+        const div = document.createElement("div");
+        const isSelected = selectedAccount === acc;
+        div.className = `p-3 rounded-xl cursor-pointer transition-all flex justify-between items-center mb-2 border ${isSelected ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-white/5 border-white/5 hover:bg-white/10 text-gray-300'}`;
+        
+        // اضافه کردن کلیک به کل کادر اکانت
+        div.onclick = () => selectAccount(acc);
+        
+        div.innerHTML = `
+            <span class="font-bold text-sm flex-1 cursor-pointer">${acc}</span>
+            <div class="flex gap-2">
+                <button onclick="renameAccount('${acc}', event)" class="text-gray-400 hover:text-white relative z-10" title="Rename Account">✏️</button>
+                <button onclick="deleteAccount('${acc}', event)" class="text-red-400 hover:text-red-500 relative z-10" title="Delete Account">🗑️</button>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function renameAccount(oldName, event) {
+    event.stopPropagation();
+    const newName = prompt(`Enter new name for account "${oldName}":`, oldName);
+    if (newName && newName.trim() && newName.trim() !== oldName) {
+        currentConfig.script_keys.forEach(k => {
+            if (k.account === oldName) k.account = newName.trim();
+        });
+        if (selectedAccount === oldName) selectedAccount = newName.trim();
+        renderAccountList();
+        if (selectedAccount) selectAccount(selectedAccount);
+    }
+}
+
+function deleteAccount(accName, event) {
+    event.stopPropagation();
+    if (confirm(`Are you sure you want to completely delete account "${accName}" and all its scripts?`)) {
+        currentConfig.script_keys = currentConfig.script_keys.filter(k => k.account !== accName);
+        if (selectedAccount === accName) {
+            selectedAccount = null;
+            $("accountDetails").classList.add("hidden");
+        }
+        renderAccountList();
+    }
+}
+
+function selectAccount(acc) {
+    if (selectedAccount === acc) return; 
+    
+    // ذخیره خودکار اسکریپت‌ها با حفظ ترتیب (جلوگیری از باگ پریدن اکانت)
+    if (selectedAccount && !$("accountDetails").classList.contains("hidden")) {
+        const lines = $("scriptIds").value.split("\n").map(l => l.trim()).filter(l => l);
+        const accountOrder = [...new Set(currentConfig.script_keys.map(k => k.account))];
+        let newScriptKeys = [];
+        for (let a of accountOrder) {
+            if (a === selectedAccount) {
+                newScriptKeys.push(...lines.map(id => ({ id, account: a })));
+            } else {
+                newScriptKeys.push(...currentConfig.script_keys.filter(k => k.account === a));
+            }
+        }
+        currentConfig.script_keys = newScriptKeys;
+    }
+    
+    selectedAccount = acc;
+    renderAccountList();
+    $("accountDetails").classList.remove("hidden");
+    $("selectedAccountName").innerText = `${acc}`;
+    const ids = currentConfig.script_keys.filter(k => k.account === acc).map(k => k.id).join("\n");
+    $("scriptIds").value = ids;
+}
+
+function addNewAccount() {
+    const name = prompt("Enter new account name (e.g. Account3):");
+    if (name && name.trim()) {
+        currentConfig.script_keys.push({ id: "", account: name.trim() });
+        selectedAccount = name.trim();
+        renderAccountList();
+        selectAccount(selectedAccount);
+    }
+}
+
+let sessionPercentageMode = false;
+
+function toggleSessionPercentage() {
+    sessionPercentageMode = !sessionPercentageMode;
+    updateDashboard();
+}
+
+function lockDashboard() {
+    authToken = null;
+    localStorage.removeItem("goose_token");
+    $("loginOverlay").style.display = "flex";
+    $("loginPassword").value = "";
+    showToast("Dashboard Locked", "success");
+}
+
+// ==========================================
+// 5. MONITORING CYCLES
+// ==========================================
+async function toggleClient() {
+    if (running) {
+        if (!confirm("Are you sure you want to STOP the Goose client?")) return;
+    }
+    const action = running ? ENDPOINTS.stop : ENDPOINTS.start;
+    const res = await api(action, { method: "POST" });
+    if (res && res.status === "error") showToast("Core error: " + res.message, "error", 5000);
+}
+
+async function updateDashboard() {
+    const data = await api(ENDPOINTS.status);
+    if (!data) return;
+
+    running = data.running;
+    const btn = $("mainActionBtn");
+    const statusBox = $("statusIndicator");
+    const statusText = $("statusText");
+
+    if (running) {
+        btn.innerText = "STOP CLIENT";
+        btn.className = "bg-red-600 hover:bg-red-700 px-8 py-3 rounded-2xl font-bold transition-all shadow-lg uppercase tracking-wider text-sm";
+        
+        if (data.stats && data.stats.quota_exhausted) {
+            statusBox.className = "flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 animate-pulse";
+            statusText.innerText = "EXHAUSTED";
+        } else {
+            statusBox.className = "flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500";
+            statusText.innerText = "RUNNING";
+        }
+        
+        if (data.stats) {
+            if(data.stats.global) {
+                $("statTraffic").innerText = `${data.stats.global.upload_str || "0 B"} / ${data.stats.global.download_str || "0 B"}`;
+                $("statActive").innerText = data.stats.global.active || "0";
+                $("statEndpoints").innerText = `${data.stats.global.endpoints_active || 0} / ${data.stats.global.endpoints_total || 0}`;
+                
+                const sUsed = parseInt(data.stats.global.sessions.split("/")[0]) || 0;
+                const sLim = parseInt(data.stats.global.sessions.split("/")[1]) || 0;
+                
+                if (sessionPercentageMode && sLim > 0) {
+                    $("statSession").innerText = `${((sUsed / sLim) * 100).toFixed(1)}%`;
+                } else {
+                    $("statSession").innerText = `${sUsed} / ${sLim}`;
+                }
+            }
+
+            if (data.stats.accounts && data.stats.accounts.length > 0) {
+                const container = $("dynamicAccounts");
+                container.innerHTML = "";
+                
+                data.stats.accounts.forEach(acc => {
+                    const eps = (data.stats.endpoints || []).filter(e => e.account === acc.name);
+                    
+                    let epsHtml = eps.map(e => `
+                <div class="flex justify-between items-center text-[11px] mt-2 p-2 ${e.bl ? 'bg-red-900/30 border-red-500/30' : 'bg-black/40 border-white/5'} border rounded-lg">
+                    <span class="font-mono text-gray-300 w-16 truncate" title="${e.id}">${e.id}</span>
+                    <span class="text-emerald-400" title="OK">O:${e.ok}</span>
+                    <span class="text-red-400" title="Fail">F:${e.fail}</span>
+                    <span class="text-yellow-500" title="Today">T:${e.today}</span>
+                    <span class="text-blue-400" title="Script Quota">S:${e.script}</span>
+                    ${e.bl ? `<span class="text-yellow-500 font-bold ml-1 animate-pulse" title="Blacklisted">BL</span>` : ''}
+                </div>
+            `).join("");
+
+            const accCard = document.createElement("div");
+            accCard.className = "bg-gray-900/60 border border-white/10 p-4 rounded-2xl shadow-lg";
+            accCard.innerHTML = `
+                <div class="flex justify-between items-center mb-2 pb-2 border-b border-white/10">
+                    <span class="font-bold text-sm text-blue-400 truncate">${acc.name}</span>
+                    <div class="flex gap-2">
+                        <span class="text-[9px] bg-black/60 px-2 py-1 rounded-md text-gray-300 font-mono tracking-wide">Tdy: ${acc.today}/20k</span>
+                        <span class="text-[9px] bg-blue-900/40 px-2 py-1 rounded-md text-blue-300 font-mono tracking-wide">Scr: ${acc.script}/20k</span>
+                    </div>
+                </div>
+                <div>${epsHtml || '<span class="text-[10px] text-gray-500 italic">No deployments yet</span>'}</div>
+            `;
+                    container.appendChild(accCard);
+                });
+            }
+
+            updateChart(data.stats);
+        }
+    } else {
+        btn.innerText = "START CLIENT";
+        btn.className = "bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-2xl font-bold transition-all shadow-lg uppercase tracking-wider text-sm";
+        statusBox.className = "flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 border border-red-500/20 text-red-500";
+        statusText.innerText = "STOPPED";
+
+        // ریست کردن آمار در صورت توقف کلاینت
+        $("statTraffic").innerText = "0 B / 0 B";
+        $("statActive").innerText = "0";
+        $("statEndpoints").innerText = "0 / 0";
+        $("statSession").innerText = "0 / 0";
+        $("dynamicAccounts").innerHTML = '<div class="text-xs text-gray-500 pl-2">Waiting for engine data...</div>';
+    }
+}
+
+async function updateLogs() {
+    const data = await api(ENDPOINTS.logs);
+    if (data && data.logs) {
+        const logDiv = $("logs");
+        const box = $("logBox");
+        if(!logDiv || !box) return;
+        
+        const savedScrollTop = box.scrollTop; // ذخیره مکان فعلی اسکرول
+        const isNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 50;
+        
+        logDiv.innerHTML = data.logs.map(line => {
+            let color = "text-emerald-400/80";
+            if (line.toLowerCase().includes("error") || line.toLowerCase().includes("panic") || line.toLowerCase().includes("exhausted")) color = "text-red-400 font-bold";
+            if (line.toLowerCase().includes("ready")) color = "text-blue-400 font-bold";
+            return `<div class="${color} mb-1">${line}</div>`;
+        }).join("");
+        
+        if(isNearBottom) {
+            box.scrollTop = box.scrollHeight;
+        } else {
+            box.scrollTop = savedScrollTop; // جلوگیری از پرش به بالا
+        }
+    }
+}
+
+function openSettings() {
+    if (running) {
+        alert("برنامه در حال اجراست! تنظیمات قفل شده است. برای تغییرات، ابتدا اتصال را قطع کنید.");
+        return;
+    }
+    $("settingsModal").classList.remove("hidden");
+    loadConfigIntoUI();
+}
+
+function closeSettings() {
+    $("settingsModal").classList.add("hidden");
+}
+
+// ==========================================
+// 6. UPDATES & BOOT
+// ==========================================
+async function checkUpdate(manual = false) {
+    if (manual) {
+        $("checkUpdateBtn").innerText = "Checking...";
+        $("checkUpdateBtn").disabled = true;
+    }
+    try {
+        const res = await api('/check-updates');
+        if (res && res.ok && res.latest !== res.current) {
+            $("versionText").innerText = `Update Available: ${res.latest} (Current: ${res.current})`;
+            $("versionText").classList.replace("text-gray-400", "text-blue-400");
+            $("updateIndicator").classList.replace("bg-white/30", "bg-blue-500");
+            $("updateIndicator").classList.add("animate-ping");
+            $("updateLink").classList.remove("hidden");
+            $("checkUpdateBtn").classList.add("hidden");
+            if (manual) showToast(`New version ${res.latest} is available!`, "success");
+        } else if (manual) {
+            showToast("You are using the latest version.", "success");
+            $("checkUpdateBtn").innerText = "Check for Updates";
+            $("checkUpdateBtn").disabled = false;
+        }
+    } catch (e) {
+        if (manual) {
+            showToast("Could not connect to GitHub.", "error");
+            $("checkUpdateBtn").innerText = "Check for Updates";
+            $("checkUpdateBtn").disabled = false;
+        }
+    }
+}
+
+async function initApp() {
+    const checkAuth = await api(ENDPOINTS.status);
+    if(checkAuth !== null) {
+        $("loginOverlay").style.display = "none";
+        initChart();
+        setInterval(updateDashboard, 2000);
+        setInterval(updateLogs, 1500);
+        checkUpdate(false);
+    }
+}
+
+// ارسال سیگنال تپش قلب برای جلوگیری از بسته شدن خودکار سرور
 setInterval(() => {
-  const el = $("lastUpdateAgo")
-  if (!el) return
+    fetch(ENDPOINTS.status, { headers: { 'Authorization': authToken || "" } }).catch(() => {});
+}, 3000);
 
-  const secs = Math.floor((Date.now() - lastMeaningfulUpdate) / 1000)
-
-  if (secs < 10) el.innerText = " (just now)"
-  else if (secs < 60) el.innerText = ` (${secs}s ago)`
-  else el.innerText = ` (${Math.floor(secs / 60)}m ago)`
-}, 1000)
-
-init()
-$("loginOverlay").style.display = "flex"
+initApp();
