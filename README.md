@@ -18,6 +18,7 @@ It provides a simple control panel for starting and stopping the client, viewing
 - Live log viewer with automatic updates
 - Real-time session and traffic statistics
 - Quota tracking
+- Capable of stopping the client upon reaching a customizable quota limit
 - Dashboard password authentication based on SOCKS5 proxy password 
 - SOCKS5 configuration editor (host, port, optional username/password)
 - Responsive design for desktop and mobile devices
