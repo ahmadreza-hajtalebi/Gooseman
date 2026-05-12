@@ -1,4 +1,4 @@
-[توضیحات فارسی](https://github.com/Aydiniyom/Gooseman/blob/main/README-fa.md)
+[توضیحات فارسی](./README-fa.md)
 
 # 🦢 Gooseman
 
@@ -6,7 +6,7 @@ Gooseman is a lightweight web dashboard for managing and monitoring a running Go
 
 It provides a simple control panel for starting and stopping the client, viewing real-time logs, tracking usage statistics, and editing SOCKS proxy configuration through a browser interface.
 
-<img alt="Gooseman dashboard" src="assets/screenshot.png" style="max-width: 100%; height: auto;" />
+<img alt="Gooseman dashboard" src="./assets/screenshot.png" style="max-width: 100%; height: auto;" />
 
 ---
 

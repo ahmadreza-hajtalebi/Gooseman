@@ -4,7 +4,7 @@
 
 این پروژه یک پنل کنترل ساده برای استارت و استاپ کردن کلاینت، مشاهده لاگ‌های لحظه‌ای، دنبال کردن آمار مصرف، و ویرایش تنظیمات پراکسی SOCKS از طریق مرورگر فراهم می‌کند.
 
-<img alt="Gooseman dashboard" src="assets/screenshot.png" style="max-width: 100%; height: auto;" />
+<img alt="Gooseman dashboard" src="./assets/screenshot.png" style="max-width: 100%; height: auto;" />
 
 ## ویژگی‌ها
 
