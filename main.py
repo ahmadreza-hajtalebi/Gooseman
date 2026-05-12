@@ -12,8 +12,7 @@ import sys
 
 app = FastAPI()
 
-APP_VERSION = "beta"
-REPO_URL = "https://api.github.com/repos/Aydiniyom/Gooseman/releases/latest"
+APP_VERSION = "dev"
 
 # =========================
 # STATIC
@@ -139,25 +138,40 @@ def parse_accounts(line):
 # HELPERS
 # =========================
 
+def run_git(*args):
+    return subprocess.check_output(
+        ["git", *args],
+        cwd=BASE_DIR,
+        text=True
+    ).strip()
+
+def get_latest_tag():
+    try:
+        run_git("fetch", "--tags", "origin")
+
+        tags = run_git(
+            "tag",
+            "--sort=-v:refname"
+        ).splitlines()
+
+        return tags[0] if tags else None
+
+    except:
+        return None
+
 def check_for_updates():
     try:
-        r = requests.get(
-            REPO_URL,
-            timeout=5
-        )
+        current = get_app_version()
+        latest = get_latest_tag()
 
-        if r.status_code != 200:
+        if not latest:
             return {"ok": False}
-
-        data = r.json()
-
-        latest = data.get("tag_name", "")
 
         return {
             "ok": True,
-            "update_available": latest != APP_VERSION,
+            "update_available": current != latest,
             "latest_version": latest,
-            "current_version": APP_VERSION
+            "current_version": current
         }
 
     except Exception as e:
@@ -165,15 +179,10 @@ def check_for_updates():
 
 
 def get_app_version():
-
     try:
-        return subprocess.check_output(
-            ["git", "describe", "--tags", "--always"],
-            cwd=BASE_DIR
-        ).decode().strip().split("-")[0]
-
+        return run_git("describe", "--tags", "--exact-match")
     except:
-        return "beta"
+        return "dev"
 
 APP_VERSION = get_app_version()
 
@@ -358,17 +367,48 @@ async def update_config(request: Request):
 
 
 @app.post("/update")
-def update_dashboard(request: Request):
+async def update_dashboard(request: Request):
+
+    global process
 
     if not require_auth(request):
         return unauthorized()
 
     try:
-        subprocess.check_call(["git", "pull"], cwd=BASE_DIR)
-        return {"ok": True}
+        data = await request.json()
+        tag = data.get("tag")
+
+        if not tag:
+            return {"ok": False, "error": "Missing tag"}
+
+        if process and process.poll() is None:
+            process.terminate()
+
+        subprocess.check_call(
+            ["git", "fetch", "--tags", "origin"],
+            cwd=BASE_DIR
+        )
+
+        subprocess.check_call(
+            ["git", "reset", "--hard", tag],
+            cwd=BASE_DIR
+        )
+
+        subprocess.check_call(
+            ["git", "clean", "-fd"],
+            cwd=BASE_DIR
+        )
+
+        with open(os.path.join(BASE_DIR, ".restart"), "w") as f:
+            f.write("restart")
+
+        os._exit(0)
 
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {
+            "ok": False,
+            "error": str(e)
+        }
 
 @app.post("/check-updates")
 def manual_check_updates(request: Request):

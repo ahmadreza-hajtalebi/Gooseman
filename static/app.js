@@ -14,6 +14,7 @@ let persistentDeltas = {
 }
 let sessionPercentageMode = false
 let lastMeaningfulUpdate = Date.now()
+let latestVersion = null
 
 function isMeaningfulChange(newStats, oldStats = {}) {
   const keys = ["upload_kb", "download_kb", "session_used", "today_used", "active"]
@@ -243,7 +244,11 @@ async function performUpdate() {
   btn.innerText = "Updating..."
 
   try {
-    const r = await api("/update", { method: "POST" })
+    const r = await api("/update", { 
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tag: latestVersion })
+    })
     const d = await r.json()
 
     if (!d.ok) {
@@ -253,7 +258,7 @@ async function performUpdate() {
       return
     }
 
-    showToast("Dashboard updated successfully. Restart Gooseman.", "success", 5000)
+    showToast("Dashboard updated successfully, restarting...", "success", 5000)
     btn.innerText = "Done!"
 
   } catch (e) {
@@ -412,6 +417,7 @@ async function updateCheck() {
       $("updateBtn").innerText = `Update → ${d.latest_version}`
 
       showToast(`Update available: ${d.latest_version}`, "success")
+      latestVersion = d.latest_version
     } else {
       showToast("Gooseman is already up to date", "success")
     }
