@@ -58,24 +58,28 @@ Gooseman consists of two main parts:
 - GooseRelayVPN 1.6 binary (`goose-client(.exe)`) placed in the same directory
 - `client_config.json` file in the project root
 
----
-
 ## Installation
 
-1. Clone the repository:
+1. [Get the latest release](https://github.com/Aydiniyom/Gooseman/releases/latest)
 
-```bash
-git clone https://github.com/Aydiniyom/Gooseman.git
-cd Gooseman
-```
+2. `cd` into the root directory of the project
 
-2. Install dependencies:
+> **Linux note:** You may need to create and activate a virtual environment before continuing:
+>
+> ```bash
+> python -m venv .venv
+> source .venv/bin/activate
+> ```
+>
+> Run these commands from the root directory of the project.
+
+3. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Move your `client_config.json` and `goose-client(.exe)` files inside the project folder, in the root directory.
+4. Move your `client_config.json` and `goose-client(.exe)` files inside the project folder, in the root directory
 
 ---
 
@@ -84,20 +88,16 @@ pip install -r requirements.txt
 Start the dashboard with:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 5000
+python run.py
 ```
 
 Then you can access it via the host machine by visiting the URL `http://localhost:5000` or via other devices by `http://<host-machine-ip>:5000`.
-
-> If port `5000` fails to bind, simply give another random port that isn't likely to be prebound.
 
 ---
 
 ## Updating
 
 There has been a built-in update mechanism added to the dashboard itself.
-
-Deprecated: ~~Simply `cd` into the project directory and run `git pull`, and rerun the `uvicorn` command.~~
 
 ---
 

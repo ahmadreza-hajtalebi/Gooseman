@@ -60,20 +60,26 @@
 
 ## نصب
 
-1. کلون کردن ریپازیتوری:
+1. [**جدیدترین نسخه را بگیرید.**](https://github.com/Aydiniyom/Gooseman/releases/latest)
 
-```bash
-git clone https://github.com/Aydiniyom/Gooseman.git
-cd Gooseman
-```
+2. **به داخل پروژه `cd` کنید.**
 
-2. نصب وابستگی‌ها:
+> **نکته برای لینوکس:** اول شاید لازم باشد یک virtual environment قبل ادامه دادن بسازید:
+>
+> ```bash
+> python -m venv .venv
+> source .venv/bin/activate
+> ```
+>
+> این کامند هارا داخل پوشه ریشه پروژه اجرا کنید.
+
+3. **نصب وابستگی‌ها:**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. فایل‌های `client_config.json` و `goose-client(.exe)` خود را داخل پوشه اصلی پروژه (root directory) قرار دهید.
+4. **فایل‌های `client_config.json` و `goose-client(.exe)` خود را داخل پوشه اصلی پروژه (root directory) قرار دهید.**
 
 ---
 
@@ -82,20 +88,16 @@ pip install -r requirements.txt
 داشبورد را با دستور زیر اجرا کنید:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 5000
+python run.py
 ```
 
 سپس می‌توانید از طریق سیستم میزبان با آدرس `http://localhost:5000` یا از طریق دستگاه‌های دیگر داخل شبکه با آدرس `http://<host-machine-ip>:5000` به آن دسترسی داشته باشید.
-
-> اگر پورت `5000` قابل bind شدن نبود، کافی است یک پورت تصادفی دیگر انتخاب کنید که از قبل اشغال نشده باشد.
 
 ---
 
 ## بروزرسانی
 
 یک سیستم بروزرسانی داخلی به خود داشبورد اضافه شده است.
-
-منسوخ شده: ~~کافی بود وارد پوشه پروژه شوید، دستور `git pull` را اجرا کنید و دوباره دستور `uvicorn` را اجرا نمایید.~~
 
 ---
 
