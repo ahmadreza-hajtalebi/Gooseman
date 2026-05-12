@@ -80,7 +80,8 @@ def load_config():
             "socks_host": "127.0.0.1",
             "socks_port": 1080,
             "socks_user": "",
-            "socks_pass": ""
+            "socks_pass": "",
+            "quota_limit": 0
         }
 
     with open(CONFIG_PATH) as f:
@@ -207,6 +208,23 @@ def reader():
                 "quota_total": len(acc) * QUOTA_PER_ACCOUNT
             })
 
+            cfg = load_config()
+            quota_limit = int(cfg.get("quota_limit", 0))
+
+            current_session = sum(a["script"] for a in acc)
+
+            if (
+                quota_limit > 0 and
+                current_session >= quota_limit and
+                process and
+                process.poll() is None
+            ):
+                logs.append(
+                    f"[Gooseman] Session quota limit reached ({current_session}/{quota_limit}). Stopping Goose."
+                )
+
+                process.terminate()
+
 # =========================
 # ROUTES
 # =========================
@@ -322,6 +340,7 @@ async def update_config(request: Request):
     cfg["socks_port"] = int(data.get("socks_port", cfg["socks_port"]))
     cfg["socks_user"] = data.get("socks_user", cfg["socks_user"])
     cfg["socks_pass"] = data.get("socks_pass", cfg["socks_pass"])
+    cfg["quota_limit"] = int(data.get("quota_limit", cfg.get("quota_limit", 0)))
 
     save_config(cfg)
 

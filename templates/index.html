@@ -257,6 +257,40 @@
 
   </div>
 
+  <!-- QUOTA LIMIT -->
+
+  <div class="glass p-4 mt-4 rounded-2xl">
+
+    <div class="font-semibold mb-2">
+      🛑 Auto Stop Limit
+    </div>
+
+    <p class="text-sm text-gray-400 mb-4">
+      Automatically stop Goose when session quota reaches this value.
+      Set to 0 to disable.
+    </p>
+
+    <div class="flex gap-3 items-center">
+
+      <input
+        id="quota_limit"
+        type="number"
+        min="0"
+        placeholder="Quota limit"
+        class="bg-gray-900 p-3 rounded-xl"
+      />
+
+      <button
+        onclick="saveConfig()"
+        class="btn bg-red-600 px-4 py-3 rounded-xl font-semibold whitespace-nowrap"
+      >
+        Save
+      </button>
+
+    </div>
+
+  </div>
+
   <!-- LOGS -->
 
   <div

@@ -205,7 +205,8 @@ async function saveConfig() {
         socks_host: $("socks_host").value,
         socks_port: $("socks_port").value,
         socks_user: $("socks_user").value,
-        socks_pass: $("socks_pass").value
+        socks_pass: $("socks_pass").value,
+        quota_limit: $("quota_limit").value
       })
     })
 
