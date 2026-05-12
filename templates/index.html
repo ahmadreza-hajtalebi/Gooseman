@@ -61,6 +61,47 @@
 
 </div>
 
+<!-- STOP CONFIRMATION -->
+
+<div
+  id="stopOverlay"
+  class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-xl p-4"
+>
+
+    <div
+      class="glass w-full max-w-md rounded-[2rem] p-6 sm:p-7 overflow-hidden"
+    >
+
+      <h1 class="text-2xl font-bold text-center mb-2">
+        Stop Goose?
+      </h1>
+
+      <p class="text-sm text-gray-400 text-center mb-6">
+        This will terminate the running GooseRelayVPN client.
+      </p>
+
+      <div class="flex gap-3">
+
+        <button
+          onclick="confirmStop()"
+          class="btn flex-1 bg-red-600 rounded-xl py-3 font-semibold"
+        >
+          Stop
+        </button>
+
+        <button
+          onclick="closeStopPrompt()"
+          class="btn flex-1 bg-white/10 rounded-xl py-3 font-semibold"
+        >
+          Cancel
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
 <!-- TOAST -->
 <div id="toastContainer"
      class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none">

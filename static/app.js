@@ -154,8 +154,14 @@ async function login() {
   await updateCheck()
 }
 
-async function toggle() {
+async function toggle(force = false) {
   if (locked) return
+
+  if (running && !force) {
+    $("stopOverlay").classList.remove("hidden")
+    $("stopOverlay").classList.add("flex")
+    return
+  }
 
   locked = true
   $("toggleBtn").disabled = true
@@ -170,6 +176,16 @@ async function toggle() {
     locked = false
     $("toggleBtn").disabled = false
   }, 3000)
+}
+
+function closeStopPrompt() {
+  $("stopOverlay").classList.remove("flex")
+  $("stopOverlay").classList.add("hidden")
+}
+
+async function confirmStop() {
+  closeStopPrompt()
+  await toggle(true)
 }
 
 async function loadConfig() {
