@@ -14,7 +14,7 @@ import time
 
 app = FastAPI()
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 CORE_VERSION = "1.6.0"
 REPO_URL = "https://api.github.com/repos/Aydiniyom/Gooseman/releases/latest"
 
