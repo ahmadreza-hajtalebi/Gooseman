@@ -118,36 +118,31 @@ function updateChart(stats) {
     const now = new Date().toLocaleTimeString();
     chartData.labels.push(now);
 
-    const parseVal = (str) => {
-        if (!str) return 0;
-        if (str.includes("MB")) return parseFloat(str) * 1024;
-        if (str.includes("GB")) return parseFloat(str) * 1024 * 1024;
-        return parseFloat(str) || 0;
+    const parseVal = (v) => {
+        if (typeof v === 'string') {
+            if (v.includes("MB")) return parseFloat(v) * 1024;
+            if (v.includes("GB")) return parseFloat(v) * 1024 * 1024;
+            return parseFloat(v) || 0;
+        }
+        return v || 0;
     };
 
-    // فیکس کردن مسیر متغیرها با توجه به معماری جدید و خفن بک‌اند
-    let up = 0, down = 0, sess = 0, today = 0, script = 0;
-    
-    if(stats.global) {
+    let up = 0, down = 0, sess = 0, tdy = 0, scr = 0;
+    if (stats.global) {
         up = parseVal(stats.global.upload_str);
         down = parseVal(stats.global.download_str);
-        sess = parseInt(stats.global.sessions.split("/")[0]) || 0;
+        sess = parseInt(stats.global.sessions?.split('/')[0]) || 0;
     }
-    
-    if(stats.accounts) {
-        // جمع زدن تودی و اسکریپت تمام اکانت‌ها برای نمایش در نمودار کلی
-        today = stats.accounts.reduce((sum, a) => sum + (a.today || 0), 0);
-        script = stats.accounts.reduce((sum, a) => sum + (a.script || 0), 0);
+    if (stats.accounts) {
+        tdy = stats.accounts.reduce((s, a) => s + (a.today || 0), 0);
+        scr = stats.accounts.reduce((s, a) => s + (a.script || 0), 0);
     }
 
-    chartData.u.push(up);
-    chartData.d.push(down);
-    chartData.s.push(sess);
-    chartData.t.push(today);
-    chartData.scr.push(script);
+    chartData.u.push(up); chartData.d.push(down);
+    chartData.s.push(sess); chartData.t.push(tdy); chartData.scr.push(scr);
 
     if (chartData.labels.length > 30) {
-        chartData.labels.shift(); chartData.u.shift(); chartData.d.shift(); 
+        chartData.labels.shift(); chartData.u.shift(); chartData.d.shift();
         chartData.s.shift(); chartData.t.shift(); chartData.scr.shift();
     }
     chart.update('none');
@@ -395,7 +390,7 @@ async function updateDashboard() {
             statusBox.className = "flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 animate-pulse";
             statusText.innerText = "EXHAUSTED";
         } else {
-            statusBox.className = "flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500";
+            statusBox.className = "flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-bold";
             statusText.innerText = "RUNNING";
         }
         

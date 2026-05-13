@@ -14,9 +14,9 @@ import time
 
 app = FastAPI()
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 CORE_VERSION = "1.6.0"
-REPO_URL = "https://api.github.com/repos/Aydiniyom/Gooseman/releases/latest"
+REPO_URL = "https://api.github.com/repos/ahmadreza-hajtalebi/gooseman/releases/latest"
 
 # ==============================================================================
 # PATHS
@@ -213,12 +213,13 @@ last_ping_time = time.time()
 def watchdog():
     global last_ping_time, process
     while True:
-        time.sleep(3)
-        # اگر ۱۵ ثانیه گذشت و مرورگر تپش قلبی نفرستاد، یعنی بسته شده!
-        if time.time() - last_ping_time > 15:
+        time.sleep(5)
+        # افزایش مهلت به ۶۰ ثانیه تا اگر تب مرورگر در پس‌زمینه بود، برنامه بسته نشود
+        if time.time() - last_ping_time > 60:
             if process is not None:
-                process.terminate() # خاموش کردن موتور VPN
-            os._exit(0) # بستن بی‌رحمانه کل برنامه از حافظه رم
+                try: process.terminate()
+                except: pass
+            os._exit(0)
 
 @app.on_event("startup")
 def startup_event():
